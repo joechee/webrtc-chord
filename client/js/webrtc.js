@@ -71,7 +71,7 @@ var SignallingChannel = function (peerConnection) {
 
 	this.peerConnection = peerConnection;
 
-	this.webSocketConnection = new WebSocket("ws://" + hostname);
+	this.webSocketConnection = new WebSocket(hostname);
 
 	this.messageBuffer = [];
 
