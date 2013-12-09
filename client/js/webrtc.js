@@ -1,4 +1,4 @@
-var hostname = "test-rtc.herokuapp.com";
+var hostname = location.origin.replace(/^http/, 'ws');
 
 var IS_CHROME = !!window.webkitRTCPeerConnection,
     RTCPeerConnection,
