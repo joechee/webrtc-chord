@@ -121,9 +121,7 @@ var signalChannel = new SignallingChannel(connection);
 
 function initiateConnection() {
 
-	if (IS_CHROME) {
-		createDataChannel();
-	}
+	createDataChannel();
 
 	connection.createOffer(function (description) {
 		connection.setLocalDescription(description);
