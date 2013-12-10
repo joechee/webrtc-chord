@@ -43,7 +43,6 @@ connection.messagehandler = function (signallingChannel, msg) {
 };
 
 connection.onicecandidate = function (event) {
-	console.log(event);
     if (!event || !event.candidate) {
     	return;	
     } else {
@@ -73,6 +72,11 @@ var SignallingChannel = function (peerConnection) {
 
 	this.webSocketConnection = new WebSocket(hostname);
 
+
+	window.onbeforeunload = function() {
+    signallingChannel.webSocketConnection.close();
+	};
+
 	this.messageBuffer = [];
 
 	this.webSocketConnection.onopen = function () {
@@ -87,8 +91,11 @@ var SignallingChannel = function (peerConnection) {
 
 		if (data.type === "RTCMessage") {
 			peerConnection.messagehandler(signallingChannel, JSON.parse(data.data));
+		} else if (data.type === "getClientsResponse") {
+			signallingChannel.getClientsCallback(data.clients);
+			console.log(data.clients);
 		} else {
-			;
+			console.log("Unrecognised data type: ", data.type);
 		}
 	};
 
@@ -109,6 +116,15 @@ SignallingChannel.prototype.send = function (msg) {
 	}
 };
 
+SignallingChannel.prototype.getClients = function (callback) {
+	this.send({
+		type: "cmd",
+		cmd: "getClients"
+	});
+	this.getClientsCallback = callback;
+};
+
+
 SignallingChannel.prototype.sendRTCMessage = function (msg, recipient) {
 	this.send({
 		data: msg,
@@ -118,6 +134,10 @@ SignallingChannel.prototype.sendRTCMessage = function (msg, recipient) {
 };
 
 var signalChannel = new SignallingChannel(connection);
+signalChannel.getClients(function (clients) {
+	console.log(clients);
+});
+
 
 function initiateConnection() {
 
@@ -140,7 +160,6 @@ function createDataChannel() {
 function setupDataChannel(dataChannel) {
 	dataChannel.onmessage = function (event) {
 		var data = event.data;
-		console.log(event);
 		console.log("I got msg: ", data);
 	};
 
