@@ -51,7 +51,7 @@ if (IS_CHROME) {
 		this.webSocketConnection.messageBuffer = [];
 
 		window.onbeforeunload = function() {
-	    	signallingChannel.webSocketConnection.close();
+	    	thisCoordinator.webSocketConnection.close();
 		};
 
 		this.requestCallbacks = {};
@@ -101,7 +101,6 @@ if (IS_CHROME) {
 				currentPeer = new Peer(thisCoordinator, from);
 			}
 
-			thisCoordinator.peers[from] = currentPeer;
 			currentPeer.generateAnswer(msg, function (description) {
 				thisCoordinator._respondToServer(serverRequestID, description);
 			});
@@ -136,7 +135,7 @@ if (IS_CHROME) {
 			if (peer in thisCoordinator.peers) {
 				return;
 			} else {
-				thisCoordinator.peers[peer] = new Peer(thisCoordinator, peer);
+				var newPeer = new Peer(thisCoordinator, peer);
 				thisCoordinator.peers[peer].initiateConnection();
 			}
 		});
@@ -225,6 +224,9 @@ if (IS_CHROME) {
 	var Peer = function (coordinator, id) {
 		this.coordinator = coordinator;
 		this.connection = new RTCPeerConnection(RTCConfig);
+		this.id = id;
+
+		coordinator.peers[id] = this;
 
 		var thisPeer = this;
 		this.connection.ondatachannel = function (event) {
@@ -232,7 +234,18 @@ if (IS_CHROME) {
 			thisPeer.dataChannel = dataChannel;
 			setupDataChannel(dataChannel);
 		};
-		this.id = id;
+
+		// Cleanup connections
+		var interval = setInterval(function () {
+			if (thisPeer.connection.iceConnectionState === "closed" || thisPeer.connection.iceConnectionState === "disconnected") {
+				delete coordinator.peers[id];
+				clearInterval(interval);
+			}
+		});
+
+		this.connection.onclose = function (event) {
+			console.log("CLOSE");
+		};
 	};
 
 	Peer.prototype.initiateConnection = function () {
