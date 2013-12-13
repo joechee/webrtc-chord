@@ -20,15 +20,6 @@ if (IS_CHROME) {
 }
 
 (function (window) {
-	var RNG = function () {};
-	RNG.generate = function () {
-		return Math.floor(Math.random() * 1000000000);
-	};
-
-	window.RNG = RNG;
-})(window);
-
-(function (window) {
 
 	var RTCConfig = {
 		iceServers: [
@@ -76,8 +67,11 @@ if (IS_CHROME) {
 				case "candidate":
 					handleCandidate(msg.from, msg.candidate);
 					break;
+				case "identity":
+					handleIdentity(msg.identity);
+					break;
 				default:
-					console.log("Unrecognised Message Type!");
+					console.log("Unrecognised Message Type: ", msg.type);
 			}
 		}
 
@@ -116,6 +110,10 @@ if (IS_CHROME) {
 
 		}
 
+		function handleIdentity(identity) {
+			thisCoordinator.id = identity;
+		}
+
 
 		this.webSocketConnection.onopen = function () {
 			thisCoordinator.webSocketConnection.messageBuffer.map(function (msg) {
@@ -123,8 +121,7 @@ if (IS_CHROME) {
 			});
 		};
 
-		this.getPeers(function (response) {
-			var peers = response.peers;
+		this.getPeers(function (peers) {
 			thisCoordinator.connectToPeers(peers);
 		});
 	};
@@ -145,7 +142,9 @@ if (IS_CHROME) {
 		this._requestFromServer({
 			type: "cmd",
 			cmd: "getPeers"
-		}, callback);
+		}, function (response) {
+			callback(response.peers);
+		});
 	};
 
 	Coordinator.prototype.sendRTCMessage = function (recipient, msg, callback) {
@@ -166,6 +165,10 @@ if (IS_CHROME) {
 		this.peers[recipient].send(msg);
 	};
 
+	Coordinator.prototype.request = function (recipient, msg, callback) {
+		this.peers[recipient].request(msg, callback);
+	};
+
 
 	Coordinator.prototype._requestFromServer = function (msg, callback) {
 		if (typeof msg !== "object") {
@@ -174,7 +177,7 @@ if (IS_CHROME) {
 
 		var request = {
 			data: msg,
-			requestID: RNG.generate(),
+			requestID: Random.generate(),
 			type: "request"
 		};
 
@@ -225,14 +228,18 @@ if (IS_CHROME) {
 		this.coordinator = coordinator;
 		this.connection = new RTCPeerConnection(RTCConfig);
 		this.id = id;
+		this.messageBuffer = [];
 
 		coordinator.peers[id] = this;
+
+		this.requestCallbacks = {};
+
 
 		var thisPeer = this;
 		this.connection.ondatachannel = function (event) {
 			var dataChannel = event.channel;
 			thisPeer.dataChannel = dataChannel;
-			setupDataChannel(dataChannel);
+			setupDataChannel(thisPeer, dataChannel);
 		};
 
 		// Cleanup connections
@@ -246,6 +253,12 @@ if (IS_CHROME) {
 		this.connection.onclose = function (event) {
 			console.log("CLOSE");
 		};
+
+		this.connection.onopen = function (event) {
+			for (var i = 0; i < thisPeer.messageBuffer.length; i++) {
+				this.dataChannel.send(thisPeer.messageBuffer[i]);
+			}
+		};
 	};
 
 	Peer.prototype.initiateConnection = function () {
@@ -254,7 +267,7 @@ if (IS_CHROME) {
 
 		this.dataChannel = this.connection.createDataChannel(this.id, (IS_CHROME ? {reliable: false} : {}));
 
-		setupDataChannel(this.dataChannel);
+		setupDataChannel(thisPeer, this.dataChannel);
 
 		this.connection.createOffer(function (description) {
 			thisPeer.connection.setLocalDescription(description);
@@ -302,6 +315,7 @@ if (IS_CHROME) {
 
 	Peer.prototype.send = function (msg) {
 		if (!this.dataChannel || this.dataChannel.readyState === "connecting") {
+			this.messageBuffer.push(msg);
 			// Buffer message?
 		} else {
 			this.dataChannel.send(msg);
@@ -309,17 +323,65 @@ if (IS_CHROME) {
 	};
 
 
-	function setupDataChannel(dataChannel) {
-		dataChannel.onmessage = messageDispatcher;
+	// Provide request-response functionality
+	// Msg must be in JSON
+	Peer.prototype.request = function (msg, callback) {
+		msg.type = "request";
+		msg.requestID = Random.generate();
+
+		this.requestCallbacks[msg.requestID] = callback;
+		this.send(JSON.stringify(msg));
+	};
+
+	Peer.prototype.respond = function (msg, requestID) {
+		msg.type = "response";
+		msg.responseID = requestID;
+		this.send(JSON.stringify(msg));
+	};
+
+
+	function Request(peer, data, requestID) {
+		this.peer = peer;
+		this.data = data;
+		this.requestID = requestID;
+	}
+
+
+	Request.prototype.respond = function (msg) {
+		this.peer.respond(msg, this.requestID);
+	};
+
+
+	function setupDataChannel(thisPeer, dataChannel) {
+		dataChannel.onmessage = function (event) {
+			messageDispatcher(thisPeer, event);
+		};
 
 		dataChannel.onopen = function (event) {
 			console.log("DataChannel open");
 		};
 	}
 
-	function messageDispatcher(event) {
+	function messageDispatcher(peer, event) {
 		var data = event.data;
-		console.log("I got msg: ", data);
+		try {
+			data = JSON.parse(data);
+		} catch (e) {
+			;
+		}
+
+		if (typeof(data) === "object" && data.type === "response") {
+			peer.requestCallbacks[data.responseID](data);
+			delete peer.requestCallbacks[data.responseID];
+		} else if (typeof(data) === "object" && data.type === "request") {
+			if (peer.coordinator.onmessage) {
+				peer.coordinator.onrequest(new Request(peer, data, data.requestID));
+			}
+		} else {
+			if (peer.coordinator.onmessage) {
+				peer.coordinator.onmessage(peer.id, data);
+			}
+		}
 	}
 
 

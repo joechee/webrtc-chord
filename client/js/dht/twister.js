@@ -1,3 +1,6 @@
+// Made some modifications such as wrapping it in its' own namespace
+// and adding an alias
+
  
 /*
   I've wrapped Makoto Matsumoto and Takuji Nishimura's code in a namespace
@@ -190,5 +193,5 @@ MersenneTwister.prototype.genrand_res53 = function() {
   var a=this.genrand_int32()>>>5, b=this.genrand_int32()>>>6; 
   return(a*67108864.0+b)*(1.0/9007199254740992.0); 
 };
- 
+
 /* These real versions are due to Isaku Wada, 2002/01/09 added */

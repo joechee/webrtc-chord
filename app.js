@@ -26,8 +26,8 @@ var RTCRequestCallbacks = {};
 server.listen(process.env.PORT || 8080);
 
 
-var RNG = function () {};
-RNG.generate = function () {
+var Random = function () {};
+Random.generate = function () {
 	return Math.floor(Math.random() * 1000000000);
 };
 
@@ -35,6 +35,13 @@ webSocketServer.on('connection', function (connection) {
 	console.log("client connected");
 	connection.id = connectionIDCounter++;
 	connections[connection.id] = connection;
+
+	// Send id
+	var idResponse = {
+		identity: connection.id,
+		type: "identity"
+	};
+	connection.send(JSON.stringify(idResponse));
 
 	connection.on('message', function (msg) {
 		msg = JSON.parse(msg);
@@ -104,7 +111,7 @@ function handleRTCRequest(connection, requestID, recipient, msg) {
 
 
 function makeAnswerRequest(sender, recipient, msg, callback) {
-	var serverRequestID = RNG.generate();
+	var serverRequestID = Random.generate();
 	delete msg['requestID'];
 	var answer = {
 		from: sender,

@@ -3,8 +3,39 @@
 	<title>WebRTC Test</title>
 </head>
 <body>
-	<script src="js/webrtc.js"></script>
-	<script src="js/twister.js"></script>
-	<script src="js/dht.js"></script>
+	<script src="js/random.js"></script>
+	<script src="js/dht/webrtc.js"></script>
+	<script src="js/dht/twister.js"></script>
+	<script src="js/dht/crypto/core.js"></script>
+	<script src="js/dht/crypto/sha1.js"></script>
+	<script src="js/dht/dht.js"></script>
+	<script src="js/game.js"></script>
+	<script>
+	var game = new Game();
+
+	/*
+	store.put("hello", "world", function (success) {
+		console.log('hello');
+	});
+
+
+	store.get("hello", function (value) { console.log(value); });
+	*/
+	/*
+	setTimeout(function () {
+		store.put("hello", "world", function (success) {
+			console.log('hello');
+
+			store.get('hello', function (test) {
+				console.log(test);
+			});
+		});
+		
+	}, 2000);
+	*/
+
+
+	</script>
+
 </body>
 </html>
