@@ -1,27 +1,21 @@
+<!DOCTYPE html>
 <html>
 <head>
-	<title>Stress tests</title>
+  <meta charset="utf-8">
+  <title>DHT tests</title>
+  <link rel="stylesheet" href="/css/qunit/qunit.css">
 </head>
 <body>
-	<script src="js/webrtc.js"></script>
-	<script>
-
-	var RNG = new MersenneTwister(1);
-
-	console.log(RNG.generate());
-
-	/*
-
-	function coordinatorsStressTest() {
-		var coordinators = [];
-		for (var i = 0; i < 10; i++) {
-			var c = new Coordinator();
-			coordinators.push(c);
-		}	
-	}
-
-	coordinatorsStressTest();
-	*/
-	
-	</script>
+  <div id="qunit"></div>
+  <div id="qunit-fixture"></div>
+  <script src="/js/qunit/qunit.js"></script>
+  <script src="js/random.js"></script>
+  <script src="js/dht/webrtc.js"></script>
+  <script src="js/dht/twister.js"></script>
+  <script src="js/dht/crypto/core.js"></script>
+  <script src="js/dht/crypto/sha1.js"></script>
+  <script src="js/dht/dht.js"></script>
+  <script src="/js/dht/dht.js"></script>
+  <script src="/js/dht/test.js"></script>
 </body>
+</html>

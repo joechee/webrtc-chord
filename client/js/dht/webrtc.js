@@ -122,20 +122,51 @@ if (IS_CHROME) {
 		};
 
 		this.getPeers(function (peers) {
-			thisCoordinator.connectToPeers(peers);
+			thisCoordinator.connectToPeers(peers, function () {
+				if (thisCoordinator.onready) {
+					thisCoordinator.onready(thisCoordinator);
+				}
+			});
 		});
 	};
 
-	Coordinator.prototype.connectToPeers = function (peers) {
+	Coordinator.prototype.connectToPeers = function (peers, callback) {
 		var thisCoordinator = this;
+		var peerLength = peers.length;
+		var peersReady = 0;
 		peers.map(function (peer) {
 			if (peer in thisCoordinator.peers) {
 				return;
 			} else {
 				var newPeer = new Peer(thisCoordinator, peer);
+				newPeer.onready = function () {
+					peersReady++;
+					checkPeers(newPeer);
+				};
 				thisCoordinator.peers[peer].initiateConnection();
+				// Debug
+
+
 			}
 		});
+
+		function checkPeers(newPeer) {
+			if (peersReady === peerLength && callback) {
+				callback();
+				if (newPeer) {
+					newPeer.onready = function () {};
+				}
+			}
+		}
+
+		checkPeers();
+	};
+
+	Coordinator.prototype.close = function () {
+		for (var peer in this.peers) {
+			this.peers[peer].close();
+		}
+		this.webSocketConnection.close();
 	};
 
 	Coordinator.prototype.getPeers = function (callback) {
@@ -248,10 +279,11 @@ if (IS_CHROME) {
 				delete coordinator.peers[id];
 				clearInterval(interval);
 			}
-		});
+		}, 1000);
 
 		this.connection.onclose = function (event) {
-			console.log("CLOSE");
+			delete coordinator.peers[id];
+			clearInterval(interval);
 		};
 
 		this.connection.onopen = function (event) {
@@ -259,15 +291,39 @@ if (IS_CHROME) {
 				this.dataChannel.send(thisPeer.messageBuffer[i]);
 			}
 		};
+
+		if (coordinator.onPeerCreated) {
+			coordinator.onPeerCreated(this);
+		}
+	};
+
+	Peer.prototype.close = function () {
+		this.connection.close();
 	};
 
 	Peer.prototype.initiateConnection = function () {
 
 		var thisPeer = this;
 
-		this.dataChannel = this.connection.createDataChannel(this.id, (IS_CHROME ? {reliable: false} : {}));
+		this.dataChannel = this.connection.createDataChannel(this.id, (IS_CHROME ? {reliable: true} : {}));
 
 		setupDataChannel(thisPeer, this.dataChannel);
+
+		this.dataChannel.onopen = function () {
+			thisPeer.messageBuffer.map(function (msg) {
+				// Some bugs with sending from dataChannel
+				setTimeout(function () {
+					thisPeer.dataChannel.send(msg);
+				}, 10);
+			});
+			
+
+			thisPeer.messageBuffer = [];
+			if (thisPeer.onready) {
+				thisPeer.onready(thisPeer);
+				delete thisPeer.onready;
+			}
+		};
 
 		this.connection.createOffer(function (description) {
 			thisPeer.connection.setLocalDescription(description);
@@ -318,7 +374,16 @@ if (IS_CHROME) {
 			this.messageBuffer.push(msg);
 			// Buffer message?
 		} else {
-			this.dataChannel.send(msg);
+
+			// TODO: Remove delay that partially works around this bug
+			// https://code.google.com/p/webrtc/issues/detail?id=2406
+			var thisPeer = this;
+			setTimeout(function () {
+				var workaround = function () {
+					this.dataChannel.send(msg);
+				};
+				workaround.call(thisPeer);
+			}, 0);
 		}
 	};
 
@@ -357,8 +422,8 @@ if (IS_CHROME) {
 			messageDispatcher(thisPeer, event);
 		};
 
-		dataChannel.onopen = function (event) {
-			console.log("DataChannel open");
+		dataChannel.onerror = function (event) {
+			console.log(event);
 		};
 	}
 
