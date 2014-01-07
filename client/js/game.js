@@ -23,7 +23,6 @@
 
 			thisGame.localState = {};
 			thisGame.startMainLoop();
-
 		};
 
 	};

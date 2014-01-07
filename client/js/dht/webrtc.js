@@ -49,15 +49,35 @@ if (IS_CHROME) {
 		// TODO: Some mechanism to detect requests that don't get
 		// 		 a response
 
+		var cleanupCallbacks = function () {
+			var cleanThreshold = new Date() - 5000;
+			for (var request in thisCoordinator.requestCallbacks) {
+				if (thisCoordinator.requestCallbacks[request].timestamp < cleanThreshold) {
+					delete thisCoordinator.requestCallbacks[request];
+				}
+			}
+
+			for (var peer in thisCoordinator.peers) {
+				var requestCallbacks = thisCoordinator.peers[peer].requestCallbacks;
+				for (var request in requestCallbacks) {
+					if (requestCallbacks[request].timestamp < cleanThreshold) {
+						delete requestCallbacks[request];
+					}
+				}
+			}
+		};
+
+		setInterval(cleanupCallbacks, 500);
+
 
 		this.webSocketConnection.onmessage = function (response) {
 			var data = response.data;
 			var msg = JSON.parse(data);
 
 
-			var callback = thisCoordinator.requestCallbacks[msg.requestID];
 			switch (msg.type) {
 				case "response":
+					var callback = thisCoordinator.requestCallbacks[msg.requestID].callback;
 					callback(msg);
 					break;
 				case "request":
@@ -212,7 +232,10 @@ if (IS_CHROME) {
 			type: "request"
 		};
 
-		this.requestCallbacks[request.requestID] = callback;
+		this.requestCallbacks[request.requestID]= {
+			callback: callback,
+			timestamp: new Date()
+		};
 
 		request = JSON.stringify(request);
 
@@ -394,7 +417,10 @@ if (IS_CHROME) {
 		msg.type = "request";
 		msg.requestID = Random.generate();
 
-		this.requestCallbacks[msg.requestID] = callback;
+		this.requestCallbacks[msg.requestID] = {
+			callback: callback,
+			timestamp: new Date()
+		};
 		this.send(JSON.stringify(msg));
 	};
 
@@ -436,7 +462,12 @@ if (IS_CHROME) {
 		}
 
 		if (typeof(data) === "object" && data.type === "response") {
-			peer.requestCallbacks[data.responseID](data);
+			if (peer.requestCallbacks[data.responseID]) {
+				var callback = peer.requestCallbacks[data.responseID].callback;
+				callback(data);
+			} else {
+				throw new Error("Response received after timeout");
+			}
 			delete peer.requestCallbacks[data.responseID];
 		} else if (typeof(data) === "object" && data.type === "request") {
 			if (peer.coordinator.onmessage) {

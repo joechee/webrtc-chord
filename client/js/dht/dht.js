@@ -7,7 +7,8 @@
 		return key1 ^ key2;
 	}
 
-	function findClosestPeer(key, keyLocations, dht) {
+	function findClosestPeer(key, dht) {
+		var keyLocations = dht.keyLocations;
 		// Can probably binary search here
 		var peers = [];
 		for (var peer in dht.coordinator.peers) {
@@ -78,6 +79,14 @@
 				throw new Error("Unrecognised command: ", req.data.cmd);
 			}
 		};
+
+		this.coordinator.onPeerCreated = function (peer) {
+			for (var key in thisDHT.localStore) {
+				if (findClosestPeer(key, thisDHT) !== thisDHT.coordinator) {
+					thisDHT.put(key, thisDHT.localStore[key]);
+				}
+			}
+		};
 	};
 
 	DHT.prototype.put = function (key, value, successCallback) {
@@ -101,7 +110,7 @@
 		}
 
 		for (var key in dict) {
-			var closestPeer = findClosestPeer(key, this.keyLocations, this);
+			var closestPeer = findClosestPeer(key, this);
 
 			if (closestPeer.toString() === this.coordinator.id.toString()) {
 				this.localStore[key] = dict[key];
@@ -132,7 +141,7 @@
 
 		for (var i = 0; i < keys.length; i++) {
 			var key = keys[i];
-			var closestPeer = findClosestPeer(key, this.peerLocations, this);
+			var closestPeer = findClosestPeer(key, this);
 			var getMessage = {
 				key: key,
 				cmd: "get"
