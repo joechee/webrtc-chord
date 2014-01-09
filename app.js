@@ -64,7 +64,11 @@ webSocketServer.on('connection', function (connection) {
 function handleCmdMessage(connection, requestID, msg) {
 	switch (msg.cmd) {
 		case "getPeers":
+			// Should deprecate this
 			handleGetPeersCommand(connection, requestID, msg);
+			break;
+		case "getRandomPeer":
+			handleGetRandomPeerCommand(connection, requestID, msg);
 			break;
 		default:
 			console.log("Unrecognised command: " + msg.cmd);
@@ -114,8 +118,8 @@ function makeAnswerRequest(sender, recipient, msg, callback) {
 	var serverRequestID = Random.generate();
 	delete msg['requestID'];
 	var answer = {
-		from: sender,
 		data: msg,
+		from: sender,
 		serverRequestID: serverRequestID,
 		type: "request"
 	};
@@ -139,6 +143,33 @@ function handleGetPeersCommand(connection, requestID, msg) {
 		}
 	}
 	connection.send(JSON.stringify(response));
+}
+
+function handleGetRandomPeerCommand(connection, requestID, msg) {
+	var response = {
+		peer: getRandomPeer(connection),
+		requestID: requestID,
+		type: "response"
+	};
+
+	connection.send(JSON.stringify(response));
+}
+
+function getRandomPeer(connection) {
+	// This picks a random element in one pass out of all the elements in the dictionary
+	var counter = 0;
+	var peer = undefined;
+	for (var id in connections) {
+		if (connection === connections[id]) {
+			continue; // Don't pick yourself
+		}
+		if (Math.random() > (counter / (counter + 1))) {
+			peer = id;
+		} else {
+			counter++;
+		}
+	}
+	return peer;
 }
 
 console.log("Server started");

@@ -1,6 +1,6 @@
 // TODO: Clean up some of the closures to make code more functional and easier to read.
 
-
+var INT32_MAX = 2147483647;
 
 var hostname = location.origin.replace(/^http/, 'ws');
 
@@ -34,6 +34,16 @@ if (IS_CHROME) {
 
 
 
+	/* 
+
+	Coordinator object
+
+	Coordinates the connections between nodes within the mesh
+
+	Events:
+	onconnected: Raised when it is connected to the mesh
+
+	*/
 	var Coordinator = function () {
 		var thisCoordinator = this;
 
@@ -115,7 +125,7 @@ if (IS_CHROME) {
 				currentPeer = new Peer(thisCoordinator, from);
 			}
 
-			currentPeer.generateAnswer(msg, function (description) {
+			currentPeer._generateAnswer(msg, function (description) {
 				thisCoordinator._respondToServer(serverRequestID, description);
 			});
 		}
@@ -141,45 +151,23 @@ if (IS_CHROME) {
 			});
 		};
 
-		this.getPeers(function (peers) {
-			thisCoordinator.connectToPeers(peers, function () {
-				if (thisCoordinator.onready) {
-					thisCoordinator.onready(thisCoordinator);
-				}
-			});
-		});
-	};
-
-	Coordinator.prototype.connectToPeers = function (peers, callback) {
-		var thisCoordinator = this;
-		var peerLength = peers.length;
-		var peersReady = 0;
-		peers.map(function (peer) {
-			if (peer in thisCoordinator.peers) {
-				return;
-			} else {
+		this.getRandomPeer(function (peer) {
+			thisCoordinator.fingerTable = new FingerTable();
+			thisCoordinator.fingerTable.init();
+			if (peer) {
 				var newPeer = new Peer(thisCoordinator, peer);
-				newPeer.onready = function () {
-					peersReady++;
-					checkPeers(newPeer);
+				thisCoordinator.fingerTable.addPeer(newPeer);
+				thisCoordinator.fingerTable.onready = function () {
+					thisCoordinator.onconnected(this);
 				};
-				thisCoordinator.peers[peer].initiateConnection();
-				// Debug
-
-
-			}
-		});
-
-		function checkPeers(newPeer) {
-			if (peersReady === peerLength && callback) {
-				callback();
-				if (newPeer) {
-					newPeer.onready = function () {};
+			} else {
+				// I am the only peer!
+				if (thisCoordinator.onconnected) {
+					thisCoordinator.onconnected(this);
 				}
 			}
-		}
-
-		checkPeers();
+			
+		});
 	};
 
 	Coordinator.prototype.close = function () {
@@ -189,39 +177,16 @@ if (IS_CHROME) {
 		this.webSocketConnection.close();
 	};
 
-	Coordinator.prototype.getPeers = function (callback) {
+	Coordinator.prototype.getRandomPeer = function (callback) {
 		this._requestFromServer({
 			type: "cmd",
-			cmd: "getPeers"
+			cmd: "getRandomPeer"
 		}, function (response) {
-			callback(response.peers);
+			callback(response.peer);
 		});
 	};
 
-	Coordinator.prototype.sendRTCMessage = function (recipient, msg, callback) {
-		this._requestFromServer({
-			recipient: recipient,
-			data: msg,
-			type: "RTCMessage"
-		}, callback);
-	};
-
-	Coordinator.prototype.broadcast = function (msg) {
-		for (peer in this.peers) {
-			peer.send(msg);
-		}
-	};
-
-	Coordinator.prototype.send = function (recipient, msg) {
-		this.peers[recipient].send(msg);
-	};
-
-	Coordinator.prototype.request = function (recipient, msg, callback) {
-		this.peers[recipient].request(msg, callback);
-	};
-
-
-	Coordinator.prototype._requestFromServer = function (msg, callback) {
+	Coordinator.prototype.request = function (msg, callback) {
 		if (typeof msg !== "object") {
 			throw new Error("Unable to send strings over to the server. Please send JSON requests");
 		} 
@@ -232,7 +197,7 @@ if (IS_CHROME) {
 			type: "request"
 		};
 
-		this.requestCallbacks[request.requestID]= {
+		this.requestCallbacks[request.requestID] = {
 			callback: callback,
 			timestamp: new Date()
 		};
@@ -278,13 +243,46 @@ if (IS_CHROME) {
 
 	};
 
-	var Peer = function (coordinator, id) {
-		this.coordinator = coordinator;
+
+	Coordinator.prototype.sendRTCMessage = function (msg) {
+
+	};
+
+	Coordinator.prototype.sendRTCRequest = function (msg) {
+
+		if (typeof msg !== "object") {
+			throw new Error("Unable to send strings over to the server. Please send JSON requests");
+		} 
+
+		var request = {
+			data: msg,
+			requestID: Random.generate(),
+			type: "RTCRequest"
+		};
+
+		this.requestCallbacks[request.requestID] = {
+			callback: callback,
+			timestamp: new Date()
+		};
+
+		request = JSON.stringify(request);
+
+		// If webSocketConnection is not ready,
+		// buffer the message and wait for ready before
+		// sending
+
+		if (this.webSocketConnection.readyState === 0) {
+			this.webSocketConnection.messageBuffer.push(request);
+		} else {
+			this.webSocketConnection.send(request);
+		}
+	};
+
+	var Peer = function (transport, id) {
+		this.transport = transport;
 		this.connection = new RTCPeerConnection(RTCConfig);
 		this.id = id;
 		this.messageBuffer = [];
-
-		coordinator.peers[id] = this;
 
 		this.requestCallbacks = {};
 
@@ -299,13 +297,13 @@ if (IS_CHROME) {
 		// Cleanup connections
 		var interval = setInterval(function () {
 			if (thisPeer.connection.iceConnectionState === "closed" || thisPeer.connection.iceConnectionState === "disconnected") {
-				delete coordinator.peers[id];
+				thisPeer.dead = true;
 				clearInterval(interval);
 			}
 		}, 1000);
 
 		this.connection.onclose = function (event) {
-			delete coordinator.peers[id];
+			thisPeer.dead = true;
 			clearInterval(interval);
 		};
 
@@ -314,17 +312,13 @@ if (IS_CHROME) {
 				this.dataChannel.send(thisPeer.messageBuffer[i]);
 			}
 		};
-
-		if (coordinator.onPeerCreated) {
-			coordinator.onPeerCreated(this);
-		}
 	};
 
 	Peer.prototype.close = function () {
 		this.connection.close();
 	};
 
-	Peer.prototype.initiateConnection = function () {
+	Peer.prototype._initiateConnection = function () {
 
 		var thisPeer = this;
 
@@ -350,7 +344,7 @@ if (IS_CHROME) {
 
 		this.connection.createOffer(function (description) {
 			thisPeer.connection.setLocalDescription(description);
-			thisPeer.coordinator.sendRTCMessage(thisPeer.id, description, function (response) {
+			thisPeer._sendRTCMessage(thisPeer.id, description, function (response) {
 				var description = response.data;
 				thisPeer.connection.setRemoteDescription(new RTCSessionDescription(description));
 			});
@@ -360,8 +354,9 @@ if (IS_CHROME) {
 		    if (!event || !event.candidate) {
 		    	return;	
 		    } else {
-		    	thisPeer.coordinator.sendRTCMessage(thisPeer.id, {
+		    	thisPeer._sendRTCMessage(thisPeer.id, {
 		    		candidate: event.candidate,
+		    		from: thisPeer.parent.id,
 		    		type: "candidate",
 		    		recipient: thisPeer.id
 		    	});
@@ -369,7 +364,53 @@ if (IS_CHROME) {
 		};
 	};
 
-	Peer.prototype.generateAnswer = function (offerDescription, callback) {
+	Peer.prototype._sendRTCMessage = function (id, description, callback) {
+		this.transport.sendRTCmessage({
+			recipient: recipient,
+			from: this.id,
+			data: msg,
+			type: "RTCMessage"
+		}, callback);
+	};
+
+	Peer.prototype._sendRTCRequest = function (msg, callback) {
+		if (typeof msg !== "object") {
+			throw new Error("Unable to send strings over to the server. Please send JSON requests");
+		} 
+
+		var request = {
+			data: msg,
+			requestID: Random.generate(),
+			type: "RTCRequest"
+		};
+
+		this.requestCallbacks[request.requestID] = {
+			callback: callback,
+			timestamp: new Date()
+		};
+
+		request = JSON.stringify(request);
+
+		// If webSocketConnection is not ready,
+		// buffer the message and wait for ready before
+		// sending
+
+		if (this.webSocketConnection.readyState === 0) {
+			this.webSocketConnection.messageBuffer.push(request);
+		} else {
+			this.webSocketConnection.send(request);
+		}
+
+
+
+		this.transport.sendRTCRequest({
+			recipient: recipient,
+			from: this.
+		});
+
+	};
+
+	Peer.prototype._generateAnswer = function (offerDescription, callback) {
 		var thisConnection = this.connection;
 		var thisPeer = this;
 
@@ -383,8 +424,9 @@ if (IS_CHROME) {
 		    if (!event || !event.candidate) {
 		    	return;	
 		    } else {
-		    	thisPeer.coordinator.sendRTCMessage(thisPeer.id, {
+		    	thisPeer.transport.sendRTCMessage(thisPeer.id, {
 		    		candidate: event.candidate,
+		    		from: thisPeer.parent.id,
 		    		type: "candidate",
 		    		recipient: thisPeer.id
 		    	});
@@ -431,15 +473,15 @@ if (IS_CHROME) {
 	};
 
 
-	function Request(peer, data, requestID) {
-		this.peer = peer;
+	function Request(transport, data, requestID) {
+		this.transport = transport;
 		this.data = data;
 		this.requestID = requestID;
 	}
 
 
 	Request.prototype.respond = function (msg) {
-		this.peer.respond(msg, this.requestID);
+		this.transport.respond(msg, this.requestID);
 	};
 
 
@@ -453,6 +495,12 @@ if (IS_CHROME) {
 		};
 	}
 
+	/* 
+
+	Dispatches the message after it has been received through the WebRTC channel
+
+	*/
+
 	function messageDispatcher(peer, event) {
 		var data = event.data;
 		try {
@@ -461,24 +509,158 @@ if (IS_CHROME) {
 			;
 		}
 
-		if (typeof(data) === "object" && data.type === "response") {
-			if (peer.requestCallbacks[data.responseID]) {
-				var callback = peer.requestCallbacks[data.responseID].callback;
-				callback(data);
-			} else {
-				throw new Error("Response received after timeout");
-			}
-			delete peer.requestCallbacks[data.responseID];
-		} else if (typeof(data) === "object" && data.type === "request") {
-			if (peer.coordinator.onmessage) {
-				peer.coordinator.onrequest(new Request(peer, data, data.requestID));
-			}
+		if (typeof(data) === "object") {
+			switch(data.type) {
+				case "response":
+					if (peer.requestCallbacks[data.responseID]) {
+						var callback = peer.requestCallbacks[data.responseID].callback;
+						callback(data);
+					} else {
+						throw new Error("Response received after timeout");
+					}
+					delete peer.requestCallbacks[data.responseID];
+					break;
+				case "request":
+					if (peer.transport.onrequest) {
+						peer.transport.onrequest(new Request(peer, data, data.requestID));
+					}
+					break;
+				case "RTCMessage":
+					handleRTCRequest(new Request(peer, data, data.requestID));
+					break;
+				default:
+					throw new Error("Unable to handle message type: " + data.type);
+					break;
+			}	
 		} else {
-			if (peer.coordinator.onmessage) {
-				peer.coordinator.onmessage(peer.id, data);
+			if (peer.transport.onmessage) {
+				peer.transport.onmessage(peer.id, data);
 			}
 		}
 	}
+
+	function handleRTCRequest(request) {
+		if (!(request instanceof Request)) {
+			throw new Error("request is not a Request!");
+		}
+
+		var senderID = connection.id;
+		switch (msg.type) {
+			case "offer":
+				makeAnswerRequest(senderID, recipient, msg, function (reply) {
+					// TODO: Set up reply
+					reply.requestID = requestID;
+					delete reply['responseID'];
+					connection.send(JSON.stringify(reply));
+				});
+				break;
+			case "candidate":
+				var reply = {
+					candidate: msg.candidate,
+					type: "candidate",
+					from: senderID
+				};
+				connections[recipient].send(JSON.stringify(reply));
+
+				break;
+			default:
+				throw new Error("Unknown msg type: " + msg.type);
+		}
+
+	}
+
+
+
+	function FingerTable() {}
+
+	FingerTable.prototype.init = function (parent, transport) {
+		this.table = {};
+		this.parent = parent;
+		this.transport = transport;
+	};
+
+	FingerTable.prototype.addPeer = function (peer) {
+		this.table[peer.id] = peer;
+	};
+
+	/* Invokes the find successor protocol */
+
+	function forwardDistance(a, b) {
+		if (!a || !b) {
+			return INT32_MAX;
+		}
+		var distance = b - a;
+		if (distance =< 0) {
+			distance += INT32_MAX + 1;
+		}
+		return distance;
+	}
+
+	FingerTable.prototype.sendMessage = function (msg, callback) {
+		var closestPeer;
+
+		var id = msg.recipient;
+		for (var peer in this.table) {
+			if (forwardDistance(closestPeer, id) > forwardDistance(peer, id)) {
+				closestPeer = peer;
+			}
+		}
+
+		if (closestPeer === this.parent.id) {
+			// At this point in time, this is going to be the closest predecessor one can find
+			// Check if relative
+			if (msg.relative === "successor") {
+				callback(this, msg);
+			} else if (msg.relative === "predecessor") {
+				// Handle message
+				callback(this, msg);
+			} else {
+				callback(undefined, msg);
+			}
+		} else {
+			// Make a request to another peer to find successor
+			closestPeer.message(msg);
+		}
+	};
+
+	FingerTable.prototype.receiveMessage = function (msg) {
+		switch (msg.type) {
+			case "RTCMessage":
+				if (msg.recipient === this.parent.id) {
+					this.handleRTCMessage(msg);
+				} else {
+					this.forwardMessage(msg);
+				}
+				break;
+			case "message":
+				if (msg.recipient === this.parent.id) {
+					this.handleMessage(msg);
+				} else {
+					this.forwardMessage(msg);
+				}
+				break;		
+			default:
+				throw new Error("Unrecognised message type: " + msg.type);
+				break;
+
+		}
+	};
+
+	FingerTable.prototype.handleRTCMessage = function (msg) {
+
+	};
+
+	FingerTable.prototype.findPredecessor = function () {
+
+	};
+
+	FingerTable.prototype.fillTable = function () {
+
+	};
+
+	FingerTable.prototype.find2NClosestPeers = function () {
+
+	};
 
 
 

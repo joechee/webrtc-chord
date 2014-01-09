@@ -12,10 +12,11 @@ test("Required Libraries Loaded", function () {
 
 
 
-asyncTest("Test coordinator.onready", function () {
+asyncTest("Test Single Coordinator", function () {
 	var c = new Coordinator();
 
-	c.onready = function () {
+
+	c.onconnected = function () {
 		ok(true, "Passed!");
 		c.close();
 		start();
