@@ -323,11 +323,13 @@
 
             for (var i = 0; i < self.fingerTable.length; i++) {
               if (!self.peerTable[self.fingerTable[i]]) {
-                new Peer(self, self.parent, self.fingerTable[i]);
+                var newPeer = new Peer(self, self.parent, self.fingerTable[i]);
+                newPeer._initiateConnection();
               }
             }
             // TODO: Update other nodes that should have the current node in the fingerTable as well.
             for (var i = 0; i < self.fingerTable.length; i++) {
+              console.log('request!');
               self.findPredecessor(Math.pow(2, i), function (response) {
                 console.log(response.predecessor);
                 console.log(response.successor);
