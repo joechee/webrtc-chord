@@ -31,128 +31,110 @@ Random.generate = function () {
 	return Math.floor(Math.random() * 1000000000);
 };
 
+
+  function Request(connection, data) {
+    this.connection = connection;
+    this.data = data.data;
+    this.requestID = data.requestID;
+    this.from = data.from;
+    this.recipient = data.recipient; // Should be server
+  }
+
+
+  Request.prototype.respond = function (msg) {
+  	msg.type = "response";
+  	msg.requestID = this.requestID;
+  	this.connection.send(JSON.stringify(msg));
+  };
+
+
+
+
 webSocketServer.on('connection', function (connection) {
 	console.log("client connected");
-	connection.id = connectionIDCounter++;
-	connections[connection.id] = connection;
-
-	// Send id
-	var idResponse = {
-		identity: connection.id,
-		type: "identity"
-	};
-	connection.send(JSON.stringify(idResponse));
 
 	connection.on('message', function (msg) {
 		msg = JSON.parse(msg);
-		switch (msg.type) {
-			case "request":
-				handleRequest(connection, msg.requestID, msg.data);
-				break;
-			case "response":
-				RTCRequestCallbacks[msg.responseID](msg);
-				break;
-			default:
-				console.error("Unrecognised msg type: " + msg.type);
+
+		if (msg.recipient === "server") {
+			switch (msg.type) {
+				case "request":
+					handleRequest(new Request(connection, msg));
+					break;
+				case "response":
+					RTCRequestCallbacks[msg.responseID](msg);
+					break;
+				case "identity":
+					connections[msg.from] = connection;
+					connection.id = msg.from;
+					break;
+				default:
+					console.error("Unrecognised msg type: " + msg.type);
+			}
+		} else {
+			// Forward the msg
+			if (connections[msg.recipient]) {
+				connections[msg.recipient].send(JSON.stringify(msg));
+			} else {
+				console.log(msg.recipient);
+				console.log("recipient does not exist!");
+				// Does not exist!
+			}
 		}
+		
 	});
 	connection.on('close', function () {
 		delete connections[connection.id];
 	});
 });
 
-function handleCmdMessage(connection, requestID, msg) {
-	switch (msg.cmd) {
-		case "getPeers":
-			// Should deprecate this
-			handleGetPeersCommand(connection, requestID, msg);
-			break;
+function handleCmdMessage(request) {
+	switch (request.data.cmd) {
 		case "getRandomPeer":
-			handleGetRandomPeerCommand(connection, requestID, msg);
+			handleGetRandomPeerCommand(request);
 			break;
 		default:
 			console.log("Unrecognised command: " + msg.cmd);
 	}
 }
 
-function handleRequest(connection, requestID, msg) {
-	switch (msg.type) {
-		case "RTCMessage":
-			handleRTCRequest(connection, requestID, msg.recipient, msg.data);
-			break;
-		case "cmd":
-			handleCmdMessage(connection, requestID, msg);
+function handleRequest(request) {
+	switch (request.data.type) {
+		case "command":
+			handleCmdMessage(request);
 			break;
 		default:
-			throw new Error("Unknown request type: " + msg.data.type);
+			throw new Error("Unknown request type: " + request.data.type);
 	}
 }
 
-function handleRTCRequest(connection, requestID, recipient, msg) {
-	var senderID = connection.id;
-	switch (msg.type) {
-		case "offer":
-			makeAnswerRequest(senderID, recipient, msg, function (reply) {
-				// TODO: Set up reply
-				reply.requestID = requestID;
-				delete reply['responseID'];
-				connection.send(JSON.stringify(reply));
-			});
-			break;
-		case "candidate":
-			var reply = {
-				candidate: msg.candidate,
-				type: "candidate",
-				from: senderID
-			};
-			connections[recipient].send(JSON.stringify(reply));
-
-			break;
-		default:
-			throw new Error("Unknown msg type: " + msg.type);
-	}
-}
-
-
-function makeAnswerRequest(sender, recipient, msg, callback) {
-	var serverRequestID = Random.generate();
-	delete msg['requestID'];
+function makeAnswerRequest(request) {
+	var recipient = request.recipient;
+	var sender = request.from;
+	var msg = request.data;
 	var answer = {
 		data: msg,
 		from: sender,
-		serverRequestID: serverRequestID,
+		requestID: request.requestID,
 		type: "request"
 	};
 
-	RTCRequestCallbacks[serverRequestID] = callback;
+
+
+	RTCRequestCallbacks[requestID] = function (data) {
+		request.respond(data);
+	};
 	connections[recipient].send(JSON.stringify(answer));
 
 }
 
-function handleGetPeersCommand(connection, requestID, msg) {
-
+function handleGetRandomPeerCommand(request) {
 	var response = {
-		peers: [],
-		requestID: requestID,
-		type: "response"
-	};
-
-	for (var i in connections) {
-		if (connections[i] !== connection) {
-			response.peers.push(i);
+		data: {
+			peer: getRandomPeer(request.connection)
 		}
-	}
-	connection.send(JSON.stringify(response));
-}
-
-function handleGetRandomPeerCommand(connection, requestID, msg) {
-	var response = {
-		peer: getRandomPeer(connection),
-		requestID: requestID,
-		type: "response"
 	};
-
-	connection.send(JSON.stringify(response));
+	request.respond(response);
 }
 
 function getRandomPeer(connection) {

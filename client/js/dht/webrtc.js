@@ -47,7 +47,7 @@ if (IS_CHROME) {
 	var Coordinator = function () {
 		var thisCoordinator = this;
 
-		this.peers = {}; // There may be false sharing!
+		this.peers = {}; 
 		this.webSocketConnection = new WebSocket(hostname);
 		this.webSocketConnection.messageBuffer = [];
 
@@ -101,7 +101,7 @@ if (IS_CHROME) {
 					handleIdentity(msg.identity);
 					break;
 				default:
-					console.log("Unrecognised Message Type: ", msg.type);
+					throw new Error("Unrecognised Message Type: ", msg.type);
 			}
 		}
 
@@ -156,7 +156,6 @@ if (IS_CHROME) {
 			thisCoordinator.fingerTable.init();
 			if (peer) {
 				var newPeer = new Peer(thisCoordinator, peer);
-				thisCoordinator.fingerTable.addPeer(newPeer);
 				thisCoordinator.fingerTable.onready = function () {
 					thisCoordinator.onconnected(this);
 				};
@@ -477,11 +476,13 @@ if (IS_CHROME) {
 		this.transport = transport;
 		this.data = data;
 		this.requestID = requestID;
+		this.from = data.from;
+		this.recipient = data.recipient;
 	}
 
 
 	Request.prototype.respond = function (msg) {
-		this.transport.respond(msg, this.requestID);
+		this.transport.respond(this.from, msg, this.requestID);
 	};
 
 
