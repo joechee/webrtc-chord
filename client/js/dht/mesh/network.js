@@ -19,5 +19,15 @@ Functions that are too useful to be left in one file
     return distance;
   }
 
+  function modulo(a, b) {
+    while (a < 0) {
+      a = a + b;
+    }
+
+    return a % b;
+  }
+
   window.forwardDistance = forwardDistance;
+  window.INT32_MAX = INT32_MAX;
+  window.modulo = modulo;
 })(window);

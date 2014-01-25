@@ -80,7 +80,7 @@
 		this.status = "disconnected";
 	};
 
-	Peer.prototype._initiateConnection = function () {
+	Peer.prototype._initiateConnection = function (debug) {
 
 		var thisPeer = this;
 
@@ -91,10 +91,17 @@
 
 
 		this.connection.createOffer(function (description) {
+			if (debug) {
+				console.log('yolo!');
+			}
 			thisPeer.connection.setLocalDescription(description);
 			thisPeer._sendRTCRequest(thisPeer.id, description, function (description) {
+				if (debug) {
+					console.log('smlj');
+					console.log(description);
+				}
 				thisPeer.connection.setRemoteDescription(new RTCSessionDescription(description));
-			});
+			}, debug);
 		}, function () {});
 
 		this.connection.onicecandidate = function (event) {
@@ -121,18 +128,22 @@
 		this.bootstrap.send(message);
 	};
 
-	Peer.prototype._sendRTCRequest = function (id, msg, callback) {
+	Peer.prototype._sendRTCRequest = function (id, msg, callback, debug) {
+		if (debug === true) {
+			console.log('yolo2');
+		}
 
 		if (typeof msg !== "object") {
 			throw new Error("Unable to send strings over to the server. Please send JSON requests");
-		} 
+		}
+
 
 		this.bootstrap.request({
 			recipient: id,
 			from: this.parent.id,
 			data: msg,
 			type: "RTCMessage"
-		}, callback);
+		}, callback, true);
 
 	};
 
@@ -190,7 +201,6 @@
 			thisPeer.messageBuffer.map(function (msg) {
 				// Some bugs with sending from dataChannel
 				setTimeout(function () {
-					console.log('send!');
 					thisPeer.dataChannel.send(JSON.stringify(msg));
 				}, 10);
 			});

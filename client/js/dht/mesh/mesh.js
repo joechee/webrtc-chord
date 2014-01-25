@@ -7,6 +7,8 @@
   Constants
   */
 
+  var BIT_SIZE = 32;
+
   // Check if a dictionary is empty
   function isEmpty(ob){
     for(var i in ob){ return false;}
@@ -92,7 +94,7 @@
     this._send(response);
   };
 
-  Transport.prototype.request = function (msg, callback) {
+  Transport.prototype.request = function (msg, callback, debug) {
     if (!callback) {
       throw new Error("No callback specified!");
     }
@@ -101,7 +103,8 @@
       type: "request",
       data: msg,
       recipient: msg.recipient,
-      from: msg.from
+      from: msg.from,
+      debug: debug
     };
 
     this.requestCallbacks[request.requestID] = {
@@ -123,6 +126,9 @@
   Transport.prototype.messageHandler = function (msg) {
     switch (msg.type) {
       case "request":
+        if (msg.debug) {
+          console.log(msg);
+        }
         this._requestHandler(new Request(this, msg.data, msg.requestID));
         break;
       case "response":
@@ -190,45 +196,19 @@
     this.fingerTable = [];
 
     this.registerRequestType('findPredecessor', function (request) {
-      self.findPredecessor(request.data.id, function (response) {
+      self._findPredecessor(request.data.id, function (response) {
         request.respond(response);
       });
     });
 
-
-    this.registerRequestType('discoverFingerTable', function (request) {
-      var requestsPending = self.fingerTable.length;
-      var fingerTable = [];
-      for (var i = 0; i < self.fingerTable.length; i++) {
-        var peerId = self.fingerTable[i];
-        if (peerId === self.parent.id) {
-          requestsPending--;
-          fingerTable[i] = self.peerTable.queryClosestSuccessorId(self.parent.id);
-          checkRequestsDone();
-        } else {
-          (function (i, peerId) {
-            self.peerTable[peerId].request({
-              recipient: peerId,
-              from: self.parent.id,
-              type: 'findPredecessor',
-              id: peerId
-            }, function (response) {
-              fingerTable[i] = response.successor;
-              requestsPending--;
-              checkRequestsDone();
-            });
-
-          })(i, peerId);
+    this.registerRequestType('updateFingerTable', function (request) {
+      var nodeId = request.data.val;
+      var pos = request.data.pos;
+      self.updateSelfFingerTable(nodeId, pos, function (result) {
+        if (result) {
+          request.respond({success:true});
         }
-      }
-
-      function checkRequestsDone() {
-        if (requestsPending === 0) {
-          request.respond({
-            fingerTable: fingerTable
-          });
-        }
-      }
+      });
     });
 
     peerTable.messageHandler = function (msg) {
@@ -240,23 +220,13 @@
   FingerTable.prototype._send = function (msg) {
     Transport.prototype._send.apply(this, arguments);
     
-    var id = msg.recipient;
-
-    /*
-    var closestPeer = this.parent.id;
-
-    for (var i = 0; i < this.fingerTable.length; i++) {
-      var currentId = this.fingerTable[i];
-      if (forwardDistance(currentId, id) < forwardDistance(closestPeer, id)) {
-        closestPeer = currentId;
-      }
-    }
-
-    */
+    var id = parseInt(msg.recipient, 10);
 
     var closestPeer = this.peerTable.queryClosestId(id);
 
-    if (closestPeer === this.parent.id) {
+    if (id === this.parent.id) {
+      console.error("Warning: Attempt to send message to self");
+    } else if (closestPeer === this.parent.id) {
       console.log("id does not exist! Dropping message");
     } else if (forwardDistance(closestPeer, id) < forwardDistance(this.parent.id, id)){
       // Make a request to another peer to find successor
@@ -285,72 +255,104 @@
     }
   }
 
-  FingerTable.prototype.build = function () {
+  FingerTable.prototype.join = function (target, callback) {
     var self = this;
-    var peers = this.peerTable.getPeers();
-    if (isEmpty(peers)) {
-
-      for (var i = 0; i < 32; i++) {
-        this.fingerTable[i] = this.parent.id;
-      }
-      return;
-    } else {
-      var self = this;
-      var peerId;
-      for (peerId in peers) {break;} // Get a peer from the peers dictionary
-      for (var i = 0; i < 32; i++) {  // Fill a stub finger table
-        this.fingerTable[i] = peerId;
-      }
-      this.request({
-        recipient: peerId,
-        from: this.parent.id,
-        type: "findPredecessor",  
-        id: this.parent.id
-      }, function (response) {
-        if (self.parent.id === response.successor && self.parent.id === response.predecessor) {
-          // There are only 2 nodes in the mesh, me and the predecessor
-        } else {
-          var successor = self.peerTable.getPeers()[response.successor];
-          if (!successor) {
-            successor = new Peer(self, self.parent, response.successor);
-          }
-          self.request({
-            recipient: successor.id,
-            from: self.parent.id,
-            type: "discoverFingerTable"
-          }, function (response) {
-            self.fingerTable = response.fingerTable;
-
-            for (var i = 0; i < self.fingerTable.length; i++) {
-              if (!self.peerTable[self.fingerTable[i]]) {
-                var newPeer = new Peer(self, self.parent, self.fingerTable[i]);
-                newPeer._initiateConnection();
-              }
-            }
-            // TODO: Update other nodes that should have the current node in the fingerTable as well.
-            for (var i = 0; i < self.fingerTable.length; i++) {
-              console.log('request!');
-              self.findPredecessor(Math.pow(2, i), function (response) {
-                console.log(response.predecessor);
-                console.log(response.successor);
-              });
-            }
-          });
+    if (target) {
+      this.initFingerTable(target, function () {
+        self.updateOthers();
+        if (callback) {
+          callback();
         }
-      });  
+      });
+    } else {
+      for (var i = 0; i < BIT_SIZE; i++) {
+        this.fingerTable = this.parent.id;
+      }
+      this.predecessor = this.parent.id;
     }
   };
 
-  FingerTable.prototype.rebuild = function () {
-    this.fingerTable = {};
-    this.build();
+  FingerTable.prototype.fingerInterval = function (pos) {
+    return {
+      start: modulo(this.parent.id + Math.pow(2, pos), INT32_MAX),
+      end: modulo(this.parent.id + Math.pow(2, pos + 1) - 1, INT32_MAX)
+    };
+  };
+
+  FingerTable.prototype.set = function (pos, id) {
+    id = parseInt(id, 10);
+    var self = this;
+    self.fingerTable[pos] = id;
+    if (!self.peerTable.getPeers()[id] && id !== self.parent.id) {
+      var newPeer = new Peer(self, self.parent, id);
+      newPeer._initiateConnection(true);
+    }
+  };
+
+  FingerTable.prototype.initFingerTable = function (target, callback) {
+    var self = this;
+    this.findPredecessor(target, this.parent.id, function (response) {
+      var requests = 0;
+      function checkRequestsDone() {
+        if (requests < 0) {
+          throw new Error("Requests are done already!");
+        } else if (requests === 0) {
+          callback(true);
+        }
+      }
+      self.fingerTable[0] = response.successor;
+      for (var i = 1; i < BIT_SIZE ; i++) {
+        if (self.fingerInterval(i).start >= self.parent.id 
+          && self.fingerInterval(i).start < self.fingerTable[i - 1]
+          && self.fingerTable[i - 1] !== undefined) {
+          self.set(i, self.fingerTable[i - 1]);
+        } else {
+
+          (function (i) {
+            requests++;
+            self._findPredecessor(self.fingerInterval(i).start, function (response) {
+              self.set(i + 1, response.successor);
+              requests--;
+              checkRequestsDone();
+            });
+          })(i);
+        }
+      }
+      checkRequestsDone();
+    });
+  };
+
+  FingerTable.prototype.updateOthers = function (callback) {
+    var self = this;
+    var requests = 0;
+    function checkRequestsDone() {
+      if (requests < 0) {
+        throw new Error("Requests are already done!");
+      } else if (requests === 0) {
+        callback(true);
+      }
+    }
+    for (var i = 0; i < BIT_SIZE; i++) {
+      (function (i) {
+        requests++;
+        self._findPredecessor(modulo(self.parent.id - Math.pow(2, i), INT32_MAX),
+          function (response) {
+            self.updateFingerTable(response.predecessor, self.parent.id, i, function (callback) {
+              requests--;
+              checkRequestsDone();
+            });
+          }
+        );
+      })(i);
+    }
+    checkRequestsDone();
   };
 
   FingerTable.prototype.respond = function () {
     Transport.prototype.respond.apply(this, arguments);
   };
 
-  FingerTable.prototype.findPredecessor = function (id, callback) {
+  FingerTable.prototype._findPredecessor = function (id, callback) {
     var closestPredecessor;
     var self = this;
 
@@ -358,18 +360,55 @@
 
     if (predecessorId === self.parent.id) {
       var successor = self.peerTable.queryClosestSuccessorId(id);
-      callback({
-        predecessor: self.parent.id,
-        successor: successor
-      });
+      setTimeout(function () {
+        callback({
+          predecessor: self.parent.id,
+          successor: successor
+        });
+      }, 0);
+    } else {
+      self.findPredecessor(predecessorId, id, callback);
+    }
+  };
+
+  FingerTable.prototype.findPredecessor = function (target, id, callback) {
+    var self = this;
+    if (target === self.parent.id) {
+      self._findPredecessor(id, callback);
     } else {
       self.request({
-        recipient: predecessorId,
+        recipient: target,
         from: self.parent.id,
-        type: 'findPredecessor'
-      }, function (response) {
-        callback(response);
+        type: 'findPredecessor',
+        id: id
+      }, callback);  
+    }
+    
+  };
+
+  // Updates nodeId's finger table to include selfId at position pos
+  FingerTable.prototype.updateFingerTable = function (nodeId, selfId, pos, callback) {
+    if (parseInt(nodeId, 10) !== parseInt(this.parent.id, 10)) {
+      this.request({
+        recipient: nodeId,
+        from: selfId,
+        type: 'updateFingerTable',
+        data: {
+          val: selfId,
+          pos: pos        
+        }
+      }, function () {
+        if (callback) {
+          callback.apply(this, arguments);
+        }
       });
+    }
+  };
+
+  FingerTable.prototype.updateSelfFingerTable = function (id, pos, callback) {
+    if (self.parent.id <= id && id < this.fingerTable[pos]) {
+      this.fingerTable[pos] = id;
+      callback(true);
     }
   };
 

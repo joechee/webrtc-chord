@@ -25,7 +25,7 @@
 				self.connectionEstablished();
 
 				// I am the only node in the mesh!
-				self.fingerTable.build();
+				self.fingerTable.join();
 
 			} else {
 				self.server.connectToPeer(peer, function (peer) {
@@ -33,8 +33,9 @@
 						throw new Error("Already connected!");
 					}
 					self.status = "connected";
-					self.fingerTable.build();
-					self.connectionEstablished();
+					self.fingerTable.join(peer.id, function () {
+						self.connectionEstablished();
+					});
 				});
 			}
 

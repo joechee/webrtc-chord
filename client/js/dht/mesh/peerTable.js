@@ -32,7 +32,8 @@
 		var closestSuccessor = this.id;
 		for (var peer in this.peers) {
 			if (forwardDistance(id, peer) < forwardDistance(id, closestSuccessor)
-				&& parseInt(peer, 10) !== parseInt(id, 10)) {
+				&& parseInt(peer, 10) !== parseInt(id, 10)
+				&& this.peers[peer].status === "connected") {
 				closestSuccessor = peer;
 			}
 		}
@@ -42,7 +43,8 @@
 	PeerTable.prototype.queryClosestPredecessorId = function (id) {
 		var closestPredecessor = this.id;
 		for (var peer in this.peers) {
-			if (forwardDistance(id, peer) > forwardDistance(id, closestPredecessor)) {
+			if (forwardDistance(id, peer) > forwardDistance(id, closestPredecessor)
+				&& this.peers[peer].status === "connected") {
 				closestPredecessor = peer;
 			}
 		}
