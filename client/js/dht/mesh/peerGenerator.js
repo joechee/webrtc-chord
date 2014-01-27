@@ -1,6 +1,6 @@
 (function (window) {
-	function PeerGenerator(node) {
-		this.parent = node;
+	function PeerGenerator(peerTable) {
+		this.parent = peerTable;
 	}
 
 
@@ -11,10 +11,13 @@
 		}
 		transport.registerMessageType("RTCMessage", function (msg) {
 			var data = msg.data;
-			var from = msg.from;
+			var from = msg.originalSender;
 			switch (data.type) {
 				case "candidate":
 					var peer = self.parent.peers[from];
+					if (!peer) {
+						return;
+					}
 					peer.addIceCandidate(new RTCIceCandidate(data.candidate));
 					break;
 				default:
@@ -28,16 +31,45 @@
 			var data = msg.data;
 			switch (data.type) {
 				case "offer":
-					var peer = new Peer(transport, self.parent, msg.from);
-					peer.generateAnswer(data, function (answer) {
-						request.respond(answer);
-					});
+					var currentPeer = self.parent.getPeers()[msg.originalSender];
+					if (currentPeer && (
+							currentPeer.connection.iceConnectionState === "new"
+						)) {
+						console.log('peer replaced!');
+						self.parent.deregister(currentPeer);
+						var peer = new Peer(transport, self.parent, msg.originalSender);
+						peer.generateAnswer(data, function (answer) {
+							request.respond(answer);
+						});
+					} else if (currentPeer) {
+						console.log('a decision was made not to replace!');
+						// Don't replace
+					} else {
+						// Add new peer
+						var peer = new Peer(transport, self.parent, msg.originalSender);
+						peer.generateAnswer(data, function (answer) {
+							request.respond(answer);
+						});
+					}
+					
 					break;
 				default:
 					throw new Error("Unknown message type: " + data.type);
 					break;
 			}
 		});
+
+		transport.registerRequestType("RTCForward", function (request) {
+			var recipient = request.data.data.recipient;
+			transport.request({
+				recipient: recipient,
+				from: self.parent.id,
+				data: request.data.data,
+				type: "RTCMessage"
+			}, function (response) {
+				request.respond(response);
+			});
+		})
 	};
 
 

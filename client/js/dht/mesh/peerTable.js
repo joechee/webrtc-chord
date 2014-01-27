@@ -10,13 +10,28 @@
 	// Register makes sure that PeerTable can see it
 	PeerTable.prototype.register = function (peer) {
 		var self = this;
-		if (peer.id) {
-			this.peers[peer.id] = peer;
+
+		if (!peer.id) {
+			throw new Error("No peer id!");
 		}
+		// There is a peer that exists at this peerID
+		// Replacement policy: If peer.id > this.id && 
+		// the peer was not already connected, replace
+
+		if (this.peers[peer.id]) {
+			throw new Error("There is already a peer registered at this id!");
+			return;
+		} 
+		this.peers[peer.id] = peer;
+
 		peer.messageHandler = function (msg) {
 			if (self.messageHandler) {
 				self.messageHandler(msg);
 			}
+		};
+
+		peer.onclose = function () {
+			self.deregister(peer);
 		};
 
 		if (this.newPeerCreated) {
@@ -24,12 +39,17 @@
 		}
 	};
 
+	PeerTable.prototype.deregister = function (peer) {
+		peer.messageHandler = function () {};
+		delete this.peers[peer.id];
+	};
+
 	PeerTable.prototype.getPeers = function () {
 		return this.peers;
 	};
 
 	PeerTable.prototype.queryClosestSuccessorId = function (id) {
-		var closestSuccessor = this.id;
+		var closestSuccessor = this.id !== id ? this.id : id - 1;
 		for (var peer in this.peers) {
 			if (forwardDistance(id, peer) < forwardDistance(id, closestSuccessor)
 				&& parseInt(peer, 10) !== parseInt(id, 10)
@@ -37,7 +57,7 @@
 				closestSuccessor = peer;
 			}
 		}
-		return closestSuccessor;
+		return parseInt(closestSuccessor, 10);
 	};
 
 	PeerTable.prototype.queryClosestPredecessorId = function (id) {
@@ -48,18 +68,27 @@
 				closestPredecessor = peer;
 			}
 		}
-		return closestPredecessor;
+		return parseInt(closestPredecessor, 10);
 	};
 
 	PeerTable.prototype.queryClosestId = function (id) {
 		var closestId = this.id;
 		for (var peer in this.peers) {
-			if (forwardDistance(id, peer) < forwardDistance(id, closestId)) {
+			if (forwardDistance(id, peer) < forwardDistance(id, closestId)
+				&& this.peers[peer].status === "connected") {
 				closestId = peer;
 			}
 		}
 
-		return closestId;
+		return parseInt(closestId, 10);
+	};
+
+	PeerTable.prototype.queryRandomPeerId = function (id) {
+		for (var peer in this.peers) {
+			if (this.peers[peer].status === "connected") {
+				return parseInt(this.peers[peer].id, 10);
+			}
+		}
 	};
 
 	window.PeerTable = PeerTable;

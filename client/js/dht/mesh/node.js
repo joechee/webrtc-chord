@@ -26,6 +26,7 @@
 
 				// I am the only node in the mesh!
 				self.fingerTable.join();
+				stabilize();
 
 			} else {
 				self.server.connectToPeer(peer, function (peer) {
@@ -35,11 +36,20 @@
 					self.status = "connected";
 					self.fingerTable.join(peer.id, function () {
 						self.connectionEstablished();
+						stabilize();
 					});
 				});
 			}
 
 		});
+
+		function stabilize() {
+			self.fingerTable.stabilize(function () {
+				setTimeout(function () {
+					stabilize();
+				}, 100);
+			});
+		}
 	};
 
 	Node.prototype.connectionEstablished = function () {

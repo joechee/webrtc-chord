@@ -18,6 +18,10 @@
 	  RTCSessionDescription = mozRTCSessionDescription;
 	}
 
+	window.RTCPeerConnection = RTCPeerConnection;
+	window.RTCIceCandidate = RTCIceCandidate;
+	window.RTCSessionDescription = RTCSessionDescription;
+
 	var RTCConfig = {
 		iceServers: [
 			{ 
@@ -42,9 +46,7 @@
 			thisPeer.dataChannel = dataChannel;
 			setupDataChannel(thisPeer, dataChannel);
 			if (thisPeer.connection.iceConnectionState === "connected") {
-				for (var i = 0; i < thisPeer.messageBuffer.length; i++) {
-					thisPeer.dataChannel.send(JSON.stringify(thisPeer.messageBuffer[i]));
-				}
+				thisPeer.clearBuffer();
 			}
 		};
 
@@ -59,16 +61,25 @@
 		this.connection.onclose = function (event) {
 			thisPeer.status = "disconnected";
 			clearInterval(interval);
+			if (thisPeer.onclose) {
+				thisPeer.onclose();
+			}
 		};
 
 		this.connection.oniceconnectionstatechange = function (event) {
 			var state = event.target.iceConnectionState;
 			if (state === "connected") {
 				thisPeer.status = "connected";
+				thisPeer.clearBuffer();
 
 				if (thisPeer.onready) {
 					thisPeer.onready();
 					delete thisPeer['onready'];
+				}
+			} else if (state === "disconnected" || state === "closed") {
+				thisPeer.status = "disconnected";
+				if (state === "disconnected") {
+					thisPeer.parent.deregister(thisPeer);
 				}
 			}
 		};
@@ -80,28 +91,21 @@
 		this.status = "disconnected";
 	};
 
-	Peer.prototype._initiateConnection = function (debug) {
-
+	Peer.prototype._initiateConnection = function () {
 		var thisPeer = this;
+
+		// debug
+		this.initiated = true;
 
 		this.dataChannel = this.connection.createDataChannel(this.id, (IS_CHROME ? {reliable: true} : {}));
 
 		setupDataChannel(thisPeer, this.dataChannel);
 
-
-
 		this.connection.createOffer(function (description) {
-			if (debug) {
-				console.log('yolo!');
-			}
 			thisPeer.connection.setLocalDescription(description);
 			thisPeer._sendRTCRequest(thisPeer.id, description, function (description) {
-				if (debug) {
-					console.log('smlj');
-					console.log(description);
-				}
 				thisPeer.connection.setRemoteDescription(new RTCSessionDescription(description));
-			}, debug);
+			});
 		}, function () {});
 
 		this.connection.onicecandidate = function (event) {
@@ -109,6 +113,7 @@
 		    	return;	
 		    } else {
 		    	thisPeer._sendRTCMessage(thisPeer.id, {
+		    		originalSender: thisPeer.parent.id,
 		    		candidate: event.candidate,
 		    		from: thisPeer.parent.id,
 		    		type: "candidate",
@@ -120,6 +125,7 @@
 
 	Peer.prototype._sendRTCMessage = function (id, description) {
 		var message = {
+			originalSender: this.parent.id,
 			recipient: id,
 			from: this.parent.id,
 			data: description,
@@ -128,27 +134,26 @@
 		this.bootstrap.send(message);
 	};
 
-	Peer.prototype._sendRTCRequest = function (id, msg, callback, debug) {
-		if (debug === true) {
-			console.log('yolo2');
-		}
+	Peer.prototype._sendRTCRequest = function (id, msg, callback) {
 
 		if (typeof msg !== "object") {
 			throw new Error("Unable to send strings over to the server. Please send JSON requests");
 		}
-
-
 		this.bootstrap.request({
+			originalSender: this.parent.id,
 			recipient: id,
 			from: this.parent.id,
 			data: msg,
 			type: "RTCMessage"
-		}, callback, true);
-
+		}, callback);
 	};
 
 	Peer.prototype.addIceCandidate = function (candidate) {
-		this.connection.addIceCandidate(candidate);
+		try {
+			this.connection.addIceCandidate(candidate);
+		} catch (e) {
+			debugger;
+		}
 	};
 
 	Peer.prototype.generateAnswer = function (offerDescription, callback) {
@@ -166,6 +171,7 @@
 		    	return;	
 		    } else {
 		    	thisPeer._sendRTCMessage(thisPeer.id, {
+		    		originalSender: thisPeer.parent.id,
 		    		candidate: event.candidate,
 		    		from: thisPeer.parent.id,
 		    		type: "candidate",
@@ -185,6 +191,22 @@
 		}
 	};
 
+	Peer.prototype.clearBuffer = function () {
+		var thisPeer = this;
+		var newBuffer = [];
+		this.messageBuffer.map(function (msg) {
+			// Some bugs with sending from dataChannel
+			setTimeout(function () {
+				if (thisPeer.dataChannel && thisPeer.dataChannel.readyState === "open") {
+					thisPeer.dataChannel.send(JSON.stringify(msg));
+				} else {
+					newBuffer.push(msg);
+				}
+			}, 10);
+		});
+		this.messageBuffer = newBuffer;
+	};
+
 
 	function setupDataChannel(thisPeer, dataChannel) {
 		dataChannel.onmessage = function (event) {
@@ -198,15 +220,8 @@
 		};
 
 		dataChannel.onopen = function () {
-			thisPeer.messageBuffer.map(function (msg) {
-				// Some bugs with sending from dataChannel
-				setTimeout(function () {
-					thisPeer.dataChannel.send(JSON.stringify(msg));
-				}, 10);
-			});
+			thisPeer.clearBuffer();
 			
-
-			thisPeer.messageBuffer = [];
 			if (thisPeer.onready) {
 				thisPeer.onready(thisPeer);
 				delete thisPeer.onready;

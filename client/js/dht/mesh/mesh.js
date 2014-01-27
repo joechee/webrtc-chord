@@ -38,11 +38,17 @@
     this.data = data;
     this.requestID = requestID;
     this.type = this.data.type;
+    this.called = false;
   }
 
 
   Request.prototype.respond = function (msg) {
-    this.transport.respond(this.data.from, this.requestID, msg);
+    if (!this.called) {
+      this.called = true;
+      this.transport.respond(this.data.from, this.requestID, msg); 
+    } else {
+      throw new Error("Respond called twice for this request!");
+    }
   };
 
 
@@ -94,7 +100,7 @@
     this._send(response);
   };
 
-  Transport.prototype.request = function (msg, callback, debug) {
+  Transport.prototype.request = function (msg, callback) {
     if (!callback) {
       throw new Error("No callback specified!");
     }
@@ -103,10 +109,8 @@
       type: "request",
       data: msg,
       recipient: msg.recipient,
-      from: msg.from,
-      debug: debug
+      from: msg.from
     };
-
     this.requestCallbacks[request.requestID] = {
       callback: callback,
       timestamp: new Date()
@@ -115,21 +119,11 @@
     this._send(request);
   };
 
-  Transport.prototype._sendRTCMessage = function (msg) {
-    throw new Error("Not implemented!");
-  };
-
-  Transport.prototype._sendRTCRequest = function (msg) {
-    throw new Error("Not implemented!");
-  };
-
   Transport.prototype.messageHandler = function (msg) {
     switch (msg.type) {
       case "request":
-        if (msg.debug) {
-          console.log(msg);
-        }
-        this._requestHandler(new Request(this, msg.data, msg.requestID));
+        var request = new Request(this, msg.data, msg.requestID)
+        this._requestHandler(request);
         break;
       case "response":
         this._responseHandler(msg);
@@ -157,7 +151,7 @@
   Transport.prototype._responseHandler = function (response) {
     if (this.requestCallbacks[response.requestID]) {
       this.requestCallbacks[response.requestID].callback(response.data);
-      delete response['requestID'];
+      delete this.requestCallbacks[response.requestID];
     } else {
       throw new Error("Response received for no request!");
     }
@@ -194,6 +188,10 @@
 
     Transport.prototype.init.apply(this, arguments);
     this.fingerTable = [];
+    this.messageBuffer = [];
+
+    this.introducers = {};
+
 
     this.registerRequestType('findPredecessor', function (request) {
       self._findPredecessor(request.data.id, function (response) {
@@ -202,8 +200,14 @@
     });
 
     this.registerRequestType('updateFingerTable', function (request) {
-      var nodeId = request.data.val;
-      var pos = request.data.pos;
+      var nodeId = request.data.data.val;
+      var pos = request.data.data.pos;
+      // Update the introducer
+      if (request.data.introducer 
+        && request.data.introducer !== self.parent.id
+        && !self.introducers[nodeId]) {
+        self.introducers[nodeId] = request.data.introducer;
+      }
       self.updateSelfFingerTable(nodeId, pos, function (result) {
         if (result) {
           request.respond({success:true});
@@ -211,42 +215,162 @@
       });
     });
 
+    this.registerRequestType('forwardRequest', function (request) {
+      var newRequest = request.data.data;
+      newRequest.from = self.parent.id;
+      self.request(newRequest, function (response) {
+        request.respond(response);
+      });
+    });
+
+    this.registerMessageType('forwardSend', function (msg) {
+      var newMsg = msg.data;
+      newMsg.from = self.parent.id;
+      self.send(newMsg);
+    });
+
     peerTable.messageHandler = function (msg) {
       self.messageHandler(msg);
     };
 
+    setInterval(function () {
+      self.clearBuffer();
+    }, 100);
+
   };
 
-  FingerTable.prototype._send = function (msg) {
+  FingerTable.prototype.clearBuffer = function () {
+    var self = this;
+    var msgBuffer = this.messageBuffer;
+    this.messageBuffer = [];
+    msgBuffer.map(function (bufferObj) {
+      var msg = bufferObj.msg;
+      var timestamp = bufferObj.timestamp;
+      if (new Date() - timestamp < 5000) {
+        self._send(msg, timestamp);
+      } else {
+        if (msg.type === "RTCMessage"
+          || (msg.type === "request" && msg.data && msg.data.type === "RTCMessage")) {
+          console.error("RTCMessage dropped!");
+          console.error(msg);
+        } else {
+          console.log("Message dropped!");
+          console.log(msg);
+        }
+      }
+    });
+  };
+
+  FingerTable.prototype._send = function (msg, timestamp) {
     Transport.prototype._send.apply(this, arguments);
+
+    // Hook to make sure that requests are turned into forwardRequests
+
+    if (!msg.ttl) {
+      msg.ttl = BIT_SIZE * 2;
+    }
+    if (!msg.route) {
+      msg.route = [this.parent.id];
+    } else {
+      msg.route.push(this.parent.id);
+    }
     
     var id = parseInt(msg.recipient, 10);
 
-    var closestPeer = this.peerTable.queryClosestId(id);
+    var closestPeer;
+
+    if (this.peerTable.getPeers()[id]
+      && this.peerTable.getPeers()[id].status === "connected") {
+      closestPeer = id;
+    } else {
+      closestPeer = this.peerTable.queryClosestPredecessorId(id);
+    }
+
+
+    // Do the actual sending
 
     if (id === this.parent.id) {
-      console.error("Warning: Attempt to send message to self");
+      throw new Error("Attempt to send message to self");
     } else if (closestPeer === this.parent.id) {
-      console.log("id does not exist! Dropping message");
+      this.messageBuffer.push({
+        msg: msg,
+        timestamp: timestamp || new Date()
+      });
     } else if (forwardDistance(closestPeer, id) < forwardDistance(this.parent.id, id)){
       // Make a request to another peer to find successor
       this.peerTable.getPeers()[closestPeer].send(msg);
     } else {
+      // This is the case where the user sends an RTCMessage to
+      // a node that is further away because he is not connected 
+      // to the mesh yet
       throw new Error("This should not happen!");
     }
   };
 
   FingerTable.prototype.messageHandler = function (msg) {
     if (parseInt(msg.recipient, 10) === parseInt(this.parent.id, 10)) {
+      if (msg.type === "RTCMessage") {
+        // check if msg contains an introducer, if so, record it so that we
+        // can communicate indirectly with this node
+        if (!this.introducers[msg.originalSender] && msg.introducer) {
+          this.introducers[msg.originalSender] = msg.introducer;
+        }
+      }
       Transport.prototype.messageHandler.apply(this, arguments);
     } else {
       this.forward(msg);
     }
   };
 
+  FingerTable.prototype.request = function (msg, callback) {
+    if (msg.type === "RTCMessage"
+      && this.introducers[msg.recipient]
+      && this.peerTable.getPeers()[msg.recipient].status !== "connected") {
+      this.forwardRequest(
+        this.introducers[msg.recipient],
+        msg,
+        callback
+      );
+    } else {
+      Transport.prototype.request.apply(this, arguments);
+    }
+  };
+
+  FingerTable.prototype.send = function (msg) {
+    if (msg.type === "RTCMessage"
+      && this.introducers[msg.recipient]
+      && this.peerTable.getPeers()[msg.recipient].status !== "connected") {
+      this.forwardSend(this.introducers[msg.recipient], msg);
+    } else {
+      Transport.prototype.send.apply(this, arguments);
+    }
+  };
+
+  FingerTable.prototype.forwardSend = function (target, msg) {
+    msg.introducer = target;
+    var msg = {
+      data: msg,
+      recipient: target,
+      from: this.parent.id,
+      type: "forwardSend"
+    };
+    this.send(msg);
+  };
+
   FingerTable.prototype.forward = function (msg) {
-    // Should have mechanism to prevent infinite loops
-    this._send(msg);
+    if (msg.ttl) {
+      msg.ttl = msg.ttl - 1;
+    } else {
+      msg.ttl = 2 * BIT_SIZE;
+    }
+
+    if (msg.ttl) {
+      this._send(msg);
+    } else if (msg.ttl < 0) {
+      throw new Error('TTL that is less than 0!');
+    } else {
+      throw new Error("Message dropped because of TTL!");
+    }
   };
 
   FingerTable.prototype.disconnect = function () {
@@ -259,14 +383,15 @@
     var self = this;
     if (target) {
       this.initFingerTable(target, function () {
-        self.updateOthers();
-        if (callback) {
-          callback();
-        }
+        self.updateOthers(function () {
+          if (callback) {
+            callback();
+          }
+        });
       });
     } else {
       for (var i = 0; i < BIT_SIZE; i++) {
-        this.fingerTable = this.parent.id;
+        this.fingerTable[i] = this.parent.id;
       }
       this.predecessor = this.parent.id;
     }
@@ -279,13 +404,21 @@
     };
   };
 
-  FingerTable.prototype.set = function (pos, id) {
+  FingerTable.prototype.set = function (pos, id, introducer) {
+    if (id === undefined) {
+      throw new Error("Trying to set an undefined value in FingerTable");
+    } else if (pos >= BIT_SIZE) {
+      throw new Error("Trying to set an index that is out of bounds");
+    }
     id = parseInt(id, 10);
     var self = this;
     self.fingerTable[pos] = id;
     if (!self.peerTable.getPeers()[id] && id !== self.parent.id) {
       var newPeer = new Peer(self, self.parent, id);
-      newPeer._initiateConnection(true);
+      if (introducer) {
+        this.introducers[id] = introducer;
+      }
+      newPeer._initiateConnection();
     }
   };
 
@@ -293,25 +426,24 @@
     var self = this;
     this.findPredecessor(target, this.parent.id, function (response) {
       var requests = 0;
-      function checkRequestsDone() {
+      var checkRequestsDone = function () {
         if (requests < 0) {
           throw new Error("Requests are done already!");
         } else if (requests === 0) {
           callback(true);
         }
       }
-      self.fingerTable[0] = response.successor;
+      self.set(0, response.successor, target);
       for (var i = 1; i < BIT_SIZE ; i++) {
         if (self.fingerInterval(i).start >= self.parent.id 
           && self.fingerInterval(i).start < self.fingerTable[i - 1]
           && self.fingerTable[i - 1] !== undefined) {
           self.set(i, self.fingerTable[i - 1]);
         } else {
-
+          requests++;
           (function (i) {
-            requests++;
-            self._findPredecessor(self.fingerInterval(i).start, function (response) {
-              self.set(i + 1, response.successor);
+            self.findPredecessor(target, self.fingerInterval(i).start, function (response) {
+              self.set(i, response.successor, target);
               requests--;
               checkRequestsDone();
             });
@@ -324,28 +456,45 @@
 
   FingerTable.prototype.updateOthers = function (callback) {
     var self = this;
-    var requests = 0;
-    function checkRequestsDone() {
+    var requests = BIT_SIZE;
+    var checkRequestsDone = function () {
       if (requests < 0) {
         throw new Error("Requests are already done!");
       } else if (requests === 0) {
-        callback(true);
+        if (callback) {
+          callback(true);
+        }
       }
     }
     for (var i = 0; i < BIT_SIZE; i++) {
       (function (i) {
-        requests++;
         self._findPredecessor(modulo(self.parent.id - Math.pow(2, i), INT32_MAX),
           function (response) {
             self.updateFingerTable(response.predecessor, self.parent.id, i, function (callback) {
               requests--;
               checkRequestsDone();
+              // infinite loop?
             });
           }
         );
       })(i);
     }
     checkRequestsDone();
+  };
+
+  FingerTable.prototype.forwardRequest = function (target, msg, callback) {
+    if (!callback) {
+      throw new Error("No callback specified!");
+    }
+    msg.introducer = target;
+
+    var forwardRequest = {
+      type: "forwardRequest",
+      data: msg,
+      recipient: target,
+      from: msg.from
+    };
+    this.request(forwardRequest, callback);
   };
 
   FingerTable.prototype.respond = function () {
@@ -366,6 +515,7 @@
           successor: successor
         });
       }, 0);
+      
     } else {
       self.findPredecessor(predecessorId, id, callback);
     }
@@ -396,20 +546,53 @@
         data: {
           val: selfId,
           pos: pos        
-        }
+        },
+        introducer: this.peerTable.queryRandomPeerId()
       }, function () {
         if (callback) {
-          callback.apply(this, arguments);
+          callback();
         }
       });
+    } else {
+      callback();
     }
   };
 
   FingerTable.prototype.updateSelfFingerTable = function (id, pos, callback) {
-    if (self.parent.id <= id && id < this.fingerTable[pos]) {
-      this.fingerTable[pos] = id;
-      callback(true);
+    if (pos >= BIT_SIZE) {
+      throw new Error("Trying to add more values to FingerTable!");
     }
+    if (forwardDistance(self.parent.id, id) >= 0 && forwardDistance(id, this.fingerTable[pos]) > 0){
+      this.set(pos, id);
+      var pred = this.peerTable.queryClosestPredecessorId(this.parent.id);
+      this.updateFingerTable(pred, this.parent.id, pos, function () {
+        if (callback) {
+          callback(true);
+        }
+      });
+    } else {
+      if (callback) {
+        callback(true);
+      }
+    }
+  };
+
+  FingerTable.prototype.stabilize = function (callback) {
+    var self = this;
+    var oldSuccessor = self.peerTable.queryClosestSuccessorId(self.parent.id);
+    self.findPredecessor(oldSuccessor, oldSuccessor,
+      function (response) {
+        var successor = parseInt(response.predecessor, 10);
+        if (successor !== self.peerTable.queryClosestSuccessorId(self.parent.id)
+          && successor !== self.parent.id
+          && !self.parent.getPeers()[successor]) {
+          self.introducers[successor] = oldSuccessor;
+          var newPeer = new Peer(self, self.parent, successor);
+          newPeer._initiateConnection();
+        }
+        callback();
+      }
+    );
   };
 
   /*

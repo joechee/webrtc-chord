@@ -4,18 +4,24 @@
   <meta charset="utf-8">
   <title>DHT tests</title>
   <link rel="stylesheet" href="/css/qunit/qunit.css">
+  <link rel="stylesheet" href="/css/vis.css">
 </head>
 <body>
+  <div id="network-graph"></div>
   <div id="qunit"></div>
   <div id="qunit-fixture"></div>
   <script src="/js/qunit/qunit.js"></script>
   <script src="/js/random.js"></script>
+  <script src="/js/dht/crypto/core.js"></script>
+  <script src="/js/dht/crypto/sha1.js"></script>
   <script src="/js/dht/mesh/network.js"></script>
   <script src="/js/dht/mesh/mesh.js"></script>
   <script src="/js/dht/mesh/peer.js"></script>
   <script src="/js/dht/mesh/peerTable.js"></script>
   <script src="/js/dht/mesh/peerGenerator.js"></script>
   <script src="/js/dht/mesh/node.js"></script>
+  <script src="/js/dht/dht.js"></script>
+  <script src="/js/vis/vis.js"></script>
   <script src="/js/dht/mesh/test.js"></script>
 </body>
 </html>
