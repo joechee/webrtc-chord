@@ -235,7 +235,7 @@ asyncTest("Test 4 nodes", function () {
 	window.checkMessageBuffers = checkMessageBuffers;
 });
 
-var NUM_NODES = 8;
+var NUM_NODES = 5;
 
 asyncTest("Test "+ NUM_NODES +" nodes", function () {
 	nodes = [];
@@ -343,6 +343,17 @@ asyncTest("Test "+ NUM_NODES +" nodes", function () {
 		var graph = new vis.Graph(container, data, options);
 
 	}
+
+	function testRingConnectivity() {
+		for (var i = 0; i < nodes.length; i++) {
+			if (nodes[i].peerTable.peers[nodes[(i + 1) % NUM_NODES].id].status !== "connected") {
+				console.log(i);
+				console.log(nodes[i]);
+			}
+		}
+	}
+
+
 	window.renderGraph = renderGraph;
 	window.checkMessageBuffers = checkMessageBuffers;
 });
@@ -381,10 +392,93 @@ asyncTest("Test 3 nodes DHT", function () {
 				});
 			});	
 		}
-		
+	}
+});
+
+var NUM_NODES_2 = 3;
+
+asyncTest("Test " + NUM_NODES_2 + " nodes DHT connect", function () {
+	ok(NUM_NODES_2 >= 3);
+	var counter = 0;
+	nodes = [];
+
+	var node = new DHT(1000);
+
+	node.node.connectionEstablished = function () {
+		ok(true);
+		counter++;
+		checkCounter();
+	};
+	nodes.push(node);
+
+
+	function checkCounter() {
+		if (counter === 1) {
+			nodes[0].put('hello', 'world', function (response) {
+				equal(response.val, "world");
+
+				for (var i = 1; i < NUM_NODES_2; i++) {
+					var node = new DHT((i + 1) * 1000);
+
+					nodes.push(node);
+				}
+
+				setTimeout(function () {
+					nodes[1].get('hello', function (response) {
+						equal(response.val, "world");
+						nodes[NUM_NODES_2 - 1].disconnect();
+						setTimeout(function () {
+							nodes[NUM_NODES_2 - 2].get('hello', function (response) {
+								equal(response.val, "world");
+								start();
+								//window.location = window.location;
+							});
+						}, 2000);
+					});
+				}, 2000);
+
+				
+			});	
+		}
+	}
+});
+
+
+
+asyncTest("Test " + NUM_NODES_2 + " nodes DHT disconnect", function () {
+	ok(NUM_NODES_2 >= 3);
+	var counter = 0;
+	nodes = [];
+	for (var i = 0; i < NUM_NODES_2; i++) {
+		var node = new DHT((i + 1) * 1000);
+
+		node.node.connectionEstablished = function () {
+			ok(true);
+			counter++;
+			checkCounter();
+		};
+		nodes.push(node);
+
 	}
 
-
+	function checkCounter() {
+		if (counter === NUM_NODES_2) {
+			nodes[0].put('hello', 'world', function (response) {
+				equal(response.val, "world");
+				nodes[1].get('hello', function (response) {
+					equal(response.val, "world");
+					nodes[NUM_NODES_2 - 1].disconnect();
+					setTimeout(function () {
+						nodes[NUM_NODES_2 - 2].get('hello', function (response) {
+							equal(response.val, "world");
+							start();
+							//window.location = window.location;
+						});
+					}, 200);
+				});
+			});	
+		}
+	}
 });
 
 

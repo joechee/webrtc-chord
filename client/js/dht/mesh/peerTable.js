@@ -14,9 +14,6 @@
 		if (!peer.id) {
 			throw new Error("No peer id!");
 		}
-		// There is a peer that exists at this peerID
-		// Replacement policy: If peer.id > this.id && 
-		// the peer was not already connected, replace
 
 		if (this.peers[peer.id]) {
 			throw new Error("There is already a peer registered at this id!");
@@ -57,7 +54,12 @@
 				closestSuccessor = peer;
 			}
 		}
-		return parseInt(closestSuccessor, 10);
+
+		if (!this.peers[id - 1] && closestSuccessor === id - 1) {
+			return undefined;
+		} else {
+			return parseInt(closestSuccessor, 10);
+		}
 	};
 
 	PeerTable.prototype.queryClosestPredecessorId = function (id) {

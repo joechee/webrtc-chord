@@ -32,9 +32,13 @@
 			switch (data.type) {
 				case "offer":
 					var currentPeer = self.parent.getPeers()[msg.originalSender];
-					if (currentPeer && (
-							currentPeer.connection.iceConnectionState === "new"
-						)) {
+
+					// There is a peer that exists at this peerID
+					// Replacement policy: If forwardDistance(peer.id, this.id) >  && 
+					// the peer was not already connected, replace
+					if (currentPeer 
+						&& (forwardDistance(currentPeer.id, self.parent.id) > forwardDistance(self.parent.id, currentPeer.id))
+					) {
 						console.log('peer replaced!');
 						self.parent.deregister(currentPeer);
 						var peer = new Peer(transport, self.parent, msg.originalSender);

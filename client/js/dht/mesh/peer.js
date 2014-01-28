@@ -87,6 +87,21 @@
 	};
 
 	Peer.prototype.disconnect = function () {
+		// Send close message before disconnect
+		// since this is faster than closing the
+		// connection
+		if (this.dataChannel && this.dataChannel.readyState === "open") {
+			this.dataChannel.send(JSON.stringify({
+				type: "PeerCommand",
+				data: {
+					cmd: "close"
+				}
+			}));	
+		}
+		this._disconnect();
+	};
+
+	Peer.prototype._disconnect = function () {
 		this.connection.close();
 		this.status = "disconnected";
 	};
@@ -211,7 +226,20 @@
 	function setupDataChannel(thisPeer, dataChannel) {
 		dataChannel.onmessage = function (event) {
 			if (thisPeer.messageHandler) {
-				thisPeer.messageHandler(JSON.parse(event.data));
+				var data = JSON.parse(event.data);
+				if (data.type === "PeerCommand") {
+					var data = data.data;
+					switch (data.cmd) {
+						case "close":
+							thisPeer._disconnect();
+							break;
+						default:
+							throw new Error("Unrecognised peer command!");
+							break;
+					}
+				} else {
+					thisPeer.messageHandler(data);
+				}
 			}
 		};
 

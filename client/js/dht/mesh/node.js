@@ -1,11 +1,11 @@
 (function (window) {
 	function Node(id) {
-		this.init();
+		this.init(id);
 	}
 
 	Node.prototype.init = function (id) {
 		var self = this;
-		this.id = id || Random.generate();
+		this.id = id ? id : Random.generate();
 
 		this.peerTable = new PeerTable(this.id);
 
@@ -34,9 +34,9 @@
 						throw new Error("Already connected!");
 					}
 					self.status = "connected";
+					stabilize();
 					self.fingerTable.join(peer.id, function () {
 						self.connectionEstablished();
-						stabilize();
 					});
 				});
 			}
@@ -44,15 +44,29 @@
 		});
 
 		function stabilize() {
-			self.fingerTable.stabilize(function () {
-				setTimeout(function () {
-					stabilize();
-				}, 100);
-			});
+			if (self.status === "closed") {
+				return;
+			} else {
+				// Remove this code to prevent stabilization
+				self.fingerTable.stabilize(function () {
+					this.stabilizeTimeout = setTimeout(function () {
+						stabilize();
+					}, 100);
+				});
+			}
 		}
+
+
+		window.addEventListener("beforeunload", function(e) {
+			self.closeConnections();
+		}, false);
 	};
 
 	Node.prototype.connectionEstablished = function () {
+
+	};
+
+	Node.prototype.ondisconnect = function () {
 
 	};
 
@@ -61,10 +75,18 @@
 	};
 
 	Node.prototype.closeConnections = function () {
+		// Call disconnect handler
+		if (this.ondisconnect) {
+			this.ondisconnect();
+		}
+
 		this.webSocketTransport.close();
 		this.fingerTable.disconnect();
-		this.status = "disconnected";
-
+		if (this.stabilizeTimeout) {
+			clearTimeout(this.stabilizeTimeout);
+			delete this.stabilizeTimeout;
+		}
+		this.status = "closed";
 	};
 
 	function Server(parent, transport) {

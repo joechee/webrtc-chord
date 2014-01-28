@@ -8,6 +8,7 @@
   */
 
   var BIT_SIZE = 32;
+  var RETRY_COUNT = 10;
 
   // Check if a dictionary is empty
   function isEmpty(ob){
@@ -67,6 +68,11 @@
 
   */
 
+  function TimeoutError() {
+    Error.apply(this, arguments);
+  }
+  TimeoutError.prototype = new Error();
+
   function Transport() {
   }
 
@@ -75,6 +81,30 @@
     this.requestCallbacks = {};
     this.requestTypeDispatcher = {};
     this.messageTypeDispatcher = {};
+
+    var self = this;
+
+    function clearRequests() {
+      for (var i in self.requestCallbacks) {
+        if (new Date() - self.requestCallbacks[i].timestamp > 10000) {
+          var errorCallback = self.requestCallbacks[i].errorCallback;
+          delete self.requestCallbacks[i];
+          console.error("Request timeout!");
+          if (errorCallback) {
+            setTimeout(function () {
+              errorCallback(new TimeoutError("Request Timeout"));
+            }, 0);
+          }
+        }
+      }
+      setTimeout(function () {
+        clearRequests();
+      }, 1000);
+    }
+
+    clearRequests();
+    
+
   };
 
   Transport.prototype._send = function (msg) {
@@ -100,7 +130,7 @@
     this._send(response);
   };
 
-  Transport.prototype.request = function (msg, callback) {
+  Transport.prototype.request = function (msg, callback, errorCallback) {
     if (!callback) {
       throw new Error("No callback specified!");
     }
@@ -113,6 +143,7 @@
     };
     this.requestCallbacks[request.requestID] = {
       callback: callback,
+      errorCallback: errorCallback,
       timestamp: new Date()
     };
 
@@ -259,6 +290,13 @@
         }
       }
     });
+
+    // Take care of introducers as well
+    for (var i in this.introducers) {
+      if (!this.peerTable.getPeers()[i] || this.peerTable.getPeers()[i].status === "connected") {
+        delete this.introducers[i];
+      }
+    }
   };
 
   FingerTable.prototype._send = function (msg, timestamp) {
@@ -374,8 +412,9 @@
   };
 
   FingerTable.prototype.disconnect = function () {
-    for (var peer in this.table) {
-      this.table[peer].disconnect();
+    var peers = this.peerTable.getPeers();
+    for (var peer in peers) {
+      peers[peer].disconnect();
     }
   }
 
@@ -501,27 +540,40 @@
     Transport.prototype.respond.apply(this, arguments);
   };
 
-  FingerTable.prototype._findPredecessor = function (id, callback) {
+  FingerTable.prototype._findPredecessor = function (id, callback, times) {
     var closestPredecessor;
     var self = this;
+
+    times = times ? times : 0;
+
+    if (times > RETRY_COUNT) {
+      throw new Error("Could not find successor!");
+    }
 
     var predecessorId = self.peerTable.queryClosestPredecessorId(id);
 
     if (predecessorId === self.parent.id) {
       var successor = self.peerTable.queryClosestSuccessorId(id);
-      setTimeout(function () {
-        callback({
-          predecessor: self.parent.id,
-          successor: successor
-        });
-      }, 0);
+      if (successor) {
+        setTimeout(function () {
+          callback({
+            predecessor: self.parent.id,
+            successor: successor
+          });
+        }, 0);  
+      } else {
+        setTimeout(function () {
+          self._findPredecessor(id, callback, times + 1);
+        }, 100);
+      }
+      
       
     } else {
       self.findPredecessor(predecessorId, id, callback);
     }
   };
 
-  FingerTable.prototype.findPredecessor = function (target, id, callback) {
+  FingerTable.prototype.findPredecessor = function (target, id, callback, errCallback) {
     var self = this;
     if (target === self.parent.id) {
       self._findPredecessor(id, callback);
@@ -531,7 +583,7 @@
         from: self.parent.id,
         type: 'findPredecessor',
         id: id
-      }, callback);  
+      }, callback, errCallback);  
     }
     
   };
@@ -580,6 +632,13 @@
   FingerTable.prototype.stabilize = function (callback) {
     var self = this;
     var oldSuccessor = self.peerTable.queryClosestSuccessorId(self.parent.id);
+
+    if (!oldSuccessor) {
+      // Delay 1000 milliseconds and call callback (which is likely to call stabilize again)
+      setTimeout(callback, 1000);
+      return;
+    }
+
     self.findPredecessor(oldSuccessor, oldSuccessor,
       function (response) {
         var successor = parseInt(response.predecessor, 10);
@@ -591,7 +650,7 @@
           newPeer._initiateConnection();
         }
         callback();
-      }
+      }, callback
     );
   };
 
@@ -630,7 +689,6 @@
     } else {
       // WebSocketConnection is either closing or closed
     }
-
   };
 
 

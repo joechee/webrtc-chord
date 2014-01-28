@@ -8,8 +8,8 @@
 	}
 	window.hash = hash;
 
-	var DHT = function () {
-		this.node = new Node();
+	var DHT = function (id) {
+		this.node = new Node(id);
 		this.localStore = {};
 
 		var self = this;
@@ -55,9 +55,9 @@
 			request.respond(dict);
 		});
 
-		window.addEventListener("beforeunload", function(e) {
+		this.node.ondisconnect = function () {
 			self.putMultiple(self.localStore);
-		}, false);
+		};
 	};
 
 	DHT.prototype.put = function (key, val, callback) {
@@ -148,6 +148,10 @@
 				callback(true);
 			}
 		});
+	};
+
+	DHT.prototype.disconnect = function () {
+		this.node.closeConnections();
 	};
 
 
