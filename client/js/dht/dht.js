@@ -55,6 +55,10 @@
 			request.respond(dict);
 		});
 
+		this.node.fingerTable.registerRequestType('ping', function (request) {
+			request.respond('pong');
+		});
+
 		this.node.ondisconnect = function () {
 			self.putMultiple(self.localStore);
 		};

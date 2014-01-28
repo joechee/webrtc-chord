@@ -146,7 +146,8 @@
     this.requestCallbacks[request.requestID] = {
       callback: callback,
       errorCallback: errorCallback,
-      timestamp: new Date()
+      timestamp: new Date(),
+      msg: msg // For debugging purposes
     };
 
     this._send(request);
