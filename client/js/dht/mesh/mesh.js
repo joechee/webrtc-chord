@@ -88,12 +88,14 @@
       for (var i in self.requestCallbacks) {
         if (new Date() - self.requestCallbacks[i].timestamp > 10000) {
           var errorCallback = self.requestCallbacks[i].errorCallback;
-          delete self.requestCallbacks[i];
           console.error("Request timeout!");
           if (errorCallback) {
-            setTimeout(function () {
-              errorCallback(new TimeoutError("Request Timeout"));
-            }, 0);
+            (function (i) {
+              setTimeout(function () {
+                errorCallback(new TimeoutError("Request Timeout"));
+                delete self.requestCallbacks[i];
+              }, 0);
+            })(i);
           }
         }
       }
@@ -636,7 +638,7 @@
     if (!oldSuccessor) {
       // Delay 1000 milliseconds and call callback (which is likely to call stabilize again)
       setTimeout(callback, 1000);
-      return;
+      return; 
     }
 
     self.findPredecessor(oldSuccessor, oldSuccessor,
