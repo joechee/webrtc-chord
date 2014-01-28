@@ -31,6 +31,7 @@
 	};
 
 	var Peer = function (bootstrap, node, id) {
+		var thisPeer = this;
 		this.parent = node;
 
 		this.bootstrap = bootstrap;
@@ -40,8 +41,31 @@
 		this.status = "disconnected";
 		this.parent.register(this);
 
-		var thisPeer = this;
+
+		// Debug
+		this.messageReceiveNo = 0;
+		this.start = new Date();
+
+		this.messageRPS = function () {
+			var time = new Date() - this.start;
+			return this.messageReceiveNo / time * 1000;
+		};
+
+		this.messageSPS = function () {
+			var time = new Date() - this.start;
+			return this.messageSendNo / time * 1000;
+		};
+
+		var test = this.connection.send;
+		this.connection.send = function () {
+			thisPeer.messageSendNo++;
+			test.apply(this, arguments);
+		};
+
+
+
 		this.connection.ondatachannel = function (event) {
+			thisPeer.messageReceiveNo++;
 			var dataChannel = event.channel;
 			thisPeer.dataChannel = dataChannel;
 			setupDataChannel(thisPeer, dataChannel);
