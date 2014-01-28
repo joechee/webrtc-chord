@@ -24,7 +24,7 @@ var connectionIDCounter = 0;
 var RTCRequestCallbacks = {};
 
 var port = process.env.OPENSHIFT_NODEJS_PORT || 8080;
-var ip = process.env.OPENSHIFT_INTERNAL_IP || "127.0.0.1";
+var ip = process.env.OPENSHIFT_NODEJS_IP || "127.0.0.1";
 server.listen(port, ip);
 
 
