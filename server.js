@@ -1,159 +1,158 @@
-#!/bin/env node
-//  OpenShift sample Node application
+// This is essentially a broadcast server
+// TODO: Support rooms
+
+
+var ws = require('ws');
 var express = require('express');
-var fs      = require('fs');
+var http = require('http');
+var app = express();
+
+app.use(express.bodyParser());
+app.use(express.methodOverride());
+app.use(express.static(__dirname + '/client'));
+app.use(app.router);
+
+var WebSocketServer = ws.Server;
+var server = http.createServer(app);
+
+var webSocketServer = new WebSocketServer({server: server});
+
+var connections = {};
+var connectionIDCounter = 0;
 
 
-/**
- *  Define the sample application.
- */
-var SampleApp = function() {
+var RTCRequestCallbacks = {};
 
-    //  Scope.
-    var self = this;
+server.listen(process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || 8080);
 
 
-    /*  ================================================================  */
-    /*  Helper functions.                                                 */
-    /*  ================================================================  */
-
-    /**
-     *  Set up server IP address and port # using env variables/defaults.
-     */
-    self.setupVariables = function() {
-        //  Set the environment variables we need.
-        self.ipaddress = process.env.OPENSHIFT_NODEJS_IP;
-        self.port      = process.env.OPENSHIFT_NODEJS_PORT || 8080;
-
-        if (typeof self.ipaddress === "undefined") {
-            //  Log errors on OpenShift but continue w/ 127.0.0.1 - this
-            //  allows us to run/test the app locally.
-            console.warn('No OPENSHIFT_NODEJS_IP var, using 127.0.0.1');
-            self.ipaddress = "127.0.0.1";
-        };
-    };
+var Random = function () {};
+Random.generate = function () {
+	return Math.floor(Math.random() * 1000000000);
+};
 
 
-    /**
-     *  Populate the cache.
-     */
-    self.populateCache = function() {
-        if (typeof self.zcache === "undefined") {
-            self.zcache = { 'index.html': '' };
-        }
-
-        //  Local cache for static content.
-        self.zcache['index.html'] = fs.readFileSync('./index.html');
-    };
+  function Request(connection, data) {
+    this.connection = connection;
+    this.data = data.data;
+    this.requestID = data.requestID;
+    this.from = data.from;
+    this.recipient = data.recipient; // Should be server
+  }
 
 
-    /**
-     *  Retrieve entry (content) from cache.
-     *  @param {string} key  Key identifying content to retrieve from cache.
-     */
-    self.cache_get = function(key) { return self.zcache[key]; };
-
-
-    /**
-     *  terminator === the termination handler
-     *  Terminate server on receipt of the specified signal.
-     *  @param {string} sig  Signal to terminate on.
-     */
-    self.terminator = function(sig){
-        if (typeof sig === "string") {
-           console.log('%s: Received %s - terminating sample app ...',
-                       Date(Date.now()), sig);
-           process.exit(1);
-        }
-        console.log('%s: Node server stopped.', Date(Date.now()) );
-    };
-
-
-    /**
-     *  Setup termination handlers (for exit and a list of signals).
-     */
-    self.setupTerminationHandlers = function(){
-        //  Process on exit and signals.
-        process.on('exit', function() { self.terminator(); });
-
-        // Removed 'SIGPIPE' from the list - bugz 852598.
-        ['SIGHUP', 'SIGINT', 'SIGQUIT', 'SIGILL', 'SIGTRAP', 'SIGABRT',
-         'SIGBUS', 'SIGFPE', 'SIGUSR1', 'SIGSEGV', 'SIGUSR2', 'SIGTERM'
-        ].forEach(function(element, index, array) {
-            process.on(element, function() { self.terminator(element); });
-        });
-    };
-
-
-    /*  ================================================================  */
-    /*  App server functions (main app logic here).                       */
-    /*  ================================================================  */
-
-    /**
-     *  Create the routing table entries + handlers for the application.
-     */
-    self.createRoutes = function() {
-        self.routes = { };
-
-        self.routes['/asciimo'] = function(req, res) {
-            var link = "http://i.imgur.com/kmbjB.png";
-            res.send("<html><body><img src='" + link + "'></body></html>");
-        };
-
-        self.routes['/'] = function(req, res) {
-            res.setHeader('Content-Type', 'text/html');
-            res.send(self.cache_get('index.html') );
-        };
-    };
-
-
-    /**
-     *  Initialize the server (express) and create the routes and register
-     *  the handlers.
-     */
-    self.initializeServer = function() {
-        self.createRoutes();
-        self.app = express.createServer();
-
-        //  Add handlers for the app (from the routes).
-        for (var r in self.routes) {
-            self.app.get(r, self.routes[r]);
-        }
-    };
-
-
-    /**
-     *  Initializes the sample application.
-     */
-    self.initialize = function() {
-        self.setupVariables();
-        self.populateCache();
-        self.setupTerminationHandlers();
-
-        // Create the express server and routes.
-        self.initializeServer();
-    };
-
-
-    /**
-     *  Start the server (starts up the sample application).
-     */
-    self.start = function() {
-        //  Start the app on the specific interface (and port).
-        self.app.listen(self.port, self.ipaddress, function() {
-            console.log('%s: Node server started on %s:%d ...',
-                        Date(Date.now() ), self.ipaddress, self.port);
-        });
-    };
-
-};   /*  Sample Application.  */
+  Request.prototype.respond = function (msg) {
+  	msg.type = "response";
+  	msg.requestID = this.requestID;
+  	this.connection.send(JSON.stringify(msg));
+  };
 
 
 
-/**
- *  main():  Main code.
- */
-var zapp = new SampleApp();
-zapp.initialize();
-zapp.start();
+
+webSocketServer.on('connection', function (connection) {
+	console.log("client connected");
+
+	connection.on('message', function (msg) {
+		msg = JSON.parse(msg);
+
+		if (msg.recipient === "server") {
+			switch (msg.type) {
+				case "request":
+					handleRequest(new Request(connection, msg));
+					break;
+				case "response":
+					RTCRequestCallbacks[msg.responseID](msg);
+					break;
+				case "identity":
+					connections[msg.from] = connection;
+					connection.id = msg.from;
+					break;
+				default:
+					console.error("Unrecognised msg type: " + msg.type);
+			}
+		} else {
+			// Forward the msg
+			if (connections[msg.recipient]) {
+				connections[msg.recipient].send(JSON.stringify(msg));
+			} else {
+				console.log(msg.recipient);
+				console.log("recipient does not exist!");
+				// Does not exist!
+			}
+		}
+		
+	});
+	connection.on('close', function () {
+		delete connections[connection.id];
+	});
+});
+
+function handleCmdMessage(request) {
+	switch (request.data.cmd) {
+		case "getRandomPeer":
+			handleGetRandomPeerCommand(request);
+			break;
+		default:
+			console.log("Unrecognised command: " + msg.cmd);
+	}
+}
+
+function handleRequest(request) {
+	switch (request.data.type) {
+		case "command":
+			handleCmdMessage(request);
+			break;
+		default:
+			throw new Error("Unknown request type: " + request.data.type);
+	}
+}
+
+function makeAnswerRequest(request) {
+	var recipient = request.recipient;
+	var sender = request.from;
+	var msg = request.data;
+	var answer = {
+		data: msg,
+		from: sender,
+		requestID: request.requestID,
+		type: "request"
+	};
+
+
+
+	RTCRequestCallbacks[requestID] = function (data) {
+		request.respond(data);
+	};
+	connections[recipient].send(JSON.stringify(answer));
+
+}
+
+function handleGetRandomPeerCommand(request) {
+	var response = {
+		data: {
+			peer: getRandomPeer(request.connection)
+		}
+	};
+	request.respond(response);
+}
+
+function getRandomPeer(connection) {
+	// This picks a random element in one pass out of all the elements in the dictionary
+	var counter = 0;
+	var peer = undefined;
+	for (var id in connections) {
+		if (connection === connections[id]) {
+			continue; // Don't pick yourself
+		}
+		if (Math.random() > (counter / (counter + 1))) {
+			peer = id;
+		} else {
+			counter++;
+		}
+	}
+	return peer;
+}
+
+console.log("Server started");
 
