@@ -19,6 +19,10 @@
 		peerGenerator.listen(this.webSocketTransport);
 		peerGenerator.listen(this.fingerTable);
 
+		this.fingerTable.registerRequestType('ping', function (request) {
+			request.respond('pong');
+		});
+
 		this.server.getRandomPeer(function (peer) {
 			if (!peer) {
 				self.status = "connected";
@@ -89,6 +93,17 @@
 		this.status = "closed";
 	};
 
+	Node.prototype.ping = function (id) {
+		var now = new Date();
+		this.fingerTable.request({
+			from: this.id,
+			recipient: id,
+			type: 'ping'
+		}, function () {
+			console.log("ping to " + id +": " + (new Date() - now) / 1000 + " seconds");
+		});
+	};
+
 	function Server(parent, transport) {
 		if (!(transport instanceof WebSocketTransport)) {
 			throw new Error("This does not follow the specification of the server!");
@@ -117,7 +132,6 @@
 	};
 
 	window.Node = Node;
-	window.Server = Server;
 
 
 })(window);
