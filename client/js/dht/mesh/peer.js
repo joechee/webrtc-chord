@@ -44,6 +44,7 @@
 
 		// Debug
 		this.messageReceiveNo = 0;
+		this.messageSendNo = 0;
 		this.start = new Date();
 
 		this.messageRPS = function () {
@@ -65,7 +66,6 @@
 
 
 		this.connection.ondatachannel = function (event) {
-			thisPeer.messageReceiveNo++;
 			var dataChannel = event.channel;
 			thisPeer.dataChannel = dataChannel;
 			setupDataChannel(thisPeer, dataChannel);
@@ -249,6 +249,7 @@
 
 	function setupDataChannel(thisPeer, dataChannel) {
 		dataChannel.onmessage = function (event) {
+			thisPeer.messageReceiveNo++;
 			if (thisPeer.messageHandler) {
 				var data = JSON.parse(event.data);
 				if (data.type === "PeerCommand") {
