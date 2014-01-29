@@ -57,22 +57,6 @@
 			return this.messageSendNo / time * 1000;
 		};
 
-		var test = this.connection.send;
-		this.connection.send = function () {
-			thisPeer.messageSendNo++;
-			try {
-				if (!thisPeer.stopSending) {
-					test.apply(this, arguments);
-				}
-			} catch (e) {
-				console.log(thisPeer.connection);
-				console.log(thisPeer.messageSPS());
-				thisPeer.stopSending = true;
-			}
-		};
-
-
-
 		this.connection.ondatachannel = function (event) {
 			var dataChannel = event.channel;
 			thisPeer.dataChannel = dataChannel;
@@ -234,6 +218,7 @@
 		} else if (!this.dataChannel || this.dataChannel.readyState === "connecting") {
 			this.messageBuffer.push(msg);
 		} else {
+			this.messageSendNo++;
 			this.dataChannel.send(JSON.stringify(msg));
 		}
 	};
@@ -277,6 +262,10 @@
 		};
 
 		dataChannel.onerror = function (event) {
+			console.log("diagnostics");
+			console.log(thisPeer.messageSPS());
+			console.log(thisPeer.messageRPS());
+			thisPeer._disconnect();
 			throw new Error(event);
 		};
 

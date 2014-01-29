@@ -92,7 +92,10 @@
           if (errorCallback) {
             (function (i) {
               setTimeout(function () {
-                errorCallback(new TimeoutError("Request Timeout"));
+                // Somehow delete deletes all memory pointing to it
+                if (errorCallback) {
+                  errorCallback(new TimeoutError("Request Timeout"));
+                }
                 delete self.requestCallbacks[i];
               }, 0);
             })(i);
