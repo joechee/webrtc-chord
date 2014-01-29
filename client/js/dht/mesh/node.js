@@ -100,7 +100,7 @@
 			recipient: id,
 			type: 'ping'
 		}, function () {
-			console.log("ping to " + id +": " + (new Date() - now) / 1000 + " seconds");
+			console.log("ping to " + id +": " + (new Date() - now) + " ms");
 		});
 	};
 

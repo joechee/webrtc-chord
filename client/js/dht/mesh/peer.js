@@ -60,7 +60,15 @@
 		var test = this.connection.send;
 		this.connection.send = function () {
 			thisPeer.messageSendNo++;
-			test.apply(this, arguments);
+			try {
+				if (!thisPeer.stopSending) {
+					test.apply(this, arguments);
+				}
+			} catch (e) {
+				console.log(thisPeer.connection);
+				console.log(thisPeer.messageSPS());
+				thisPeer.stopSending = true;
+			}
 		};
 
 
