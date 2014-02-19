@@ -1,4 +1,5 @@
 (function (window) {
+	// Simulate delay in sending messages
 	var INT32_MAX = 2147483647;
 
 	var hostname = location.origin.replace(/^http/, 'ws');
@@ -213,13 +214,14 @@
 	};
 
 	Peer.prototype.send = function (msg) {
+		var self = this;
 		if (typeof(msg) !== "object") {
 			throw new Error("Message sent is not a string! Please send an object");
-		} else if (!this.dataChannel || this.dataChannel.readyState === "connecting") {
-			this.messageBuffer.push(msg);
+		} else if (!self.dataChannel || self.dataChannel.readyState === "connecting") {
+			self.messageBuffer.push(msg);
 		} else {
-			this.messageSendNo++;
-			this.dataChannel.send(JSON.stringify(msg));
+			self.messageSendNo++;
+			self.dataChannel.send(JSON.stringify(msg));
 		}
 	};
 

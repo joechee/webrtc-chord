@@ -77,7 +77,7 @@
 						}
 					}
 				});
-			}, 1);	
+			}, 1000/30);	
 		}
 		this.started = true;
 		this.startKeyboardListeners();

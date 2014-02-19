@@ -12,9 +12,37 @@
 		this.node = new Node(id);
 		this.localStore = {};
 
+		this.takeOverBuffer = [];
+		this.ready = false;
+
+
 		var self = this;
+
+		function handleTakeOverKeys(request) {
+			if (!self.ready) {
+				self.takeOverBuffer.push(request);
+				return;
+			}
+
+			var dict = {};
+			for (var key in self.localStore) {
+				var recipient = self.node.peerTable.queryClosestPredecessorId(hash(key));
+				if (recipient === request.data.from) {
+					dict[key] = self.localStore[key];
+				}
+			}
+			request.respond(dict);
+		}
+
+
 		this.node.connectionEstablished = function () {
 			self.takeOverKeys(function (response) {
+				self.ready = true;
+				self.takeOverBuffer.forEach(function (request) {
+					handleTakeOverKeys(request);
+				});
+				self.takeOverBuffer = [];
+
 				if (self.onready){
 					self.onready();
 				}
@@ -44,20 +72,13 @@
 			});
 		});
 
-		this.node.fingerTable.registerRequestType('takeOverKeys', function (request) {
-			var dict = {};
-			for (var key in self.localStore) {
-				var recipient = self.node.peerTable.queryClosestPredecessorId(hash(key));
-				if (recipient === request.data.from) {
-					dict[key] = self.localStore[key];
-				}
-			}
-			request.respond(dict);
-		});
+		this.node.fingerTable.registerRequestType('takeOverKeys', handleTakeOverKeys);
 
 		this.node.ondisconnect = function () {
 			self.putMultiple(self.localStore);
 		};
+
+
 	};
 
 	DHT.prototype.put = function (key, val, callback) {
@@ -144,6 +165,7 @@
 			for (var key in response) {
 				self.localStore[key] = response[key];
 			}
+
 			if (callback) {
 				callback(true);
 			}

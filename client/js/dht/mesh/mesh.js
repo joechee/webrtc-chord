@@ -99,6 +99,8 @@
                 delete self.requestCallbacks[i];
               }, 0);
             })(i);
+          } else {
+            delete self.requestCallbacks[i];
           }
         }
       }
