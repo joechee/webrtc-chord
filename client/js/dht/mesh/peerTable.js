@@ -34,6 +34,15 @@
 		if (this.newPeerCreated) {
 			this.newPeerCreated(peer);
 		}
+
+		// Disconnect peer after 10 seconds
+		setTimeout(function () {
+			if (peer.status === "disconnected") {
+				peer.messageHandler = function (){};
+				peer.onclose = function (){};
+				self.deregister(peer);
+			}
+		}, 10000);
 	};
 
 	PeerTable.prototype.deregister = function (peer) {
