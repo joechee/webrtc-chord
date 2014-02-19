@@ -85,8 +85,9 @@
     var self = this;
 
     function clearRequests() {
+      var now = new Date();
       for (var i in self.requestCallbacks) {
-        if (new Date() - self.requestCallbacks[i].timestamp > 10000) {
+        if (new Date() > self.requestCallbacks[i].timeout) {
           var errorCallback = self.requestCallbacks[i].errorCallback;
           console.error("Request timeout!");
           if (errorCallback) {
@@ -137,7 +138,8 @@
     this._send(response);
   };
 
-  Transport.prototype.request = function (msg, callback, errorCallback) {
+  Transport.prototype.request = function (msg, callback, errorCallback, timeout) {
+    timeout = timeout || new Date() + 10000;
     if (!callback) {
       throw new Error("No callback specified!");
     }
@@ -152,6 +154,7 @@
       callback: callback,
       errorCallback: errorCallback,
       timestamp: new Date(),
+      timeout: new Date() + timeout,
       msg: msg // For debugging purposes
     };
 

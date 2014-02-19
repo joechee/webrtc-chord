@@ -1,4 +1,5 @@
 (function (window) {
+	var FRAME_RATE = 30;
 	var Game = function (dom) {
 		this.store = new DHT();
 		var thisStore = this.store;
@@ -56,20 +57,37 @@
 		var thisStore = this.store;
 		var thisGame = this;
 		if (!this.started) {
-			var mainLoop = setInterval(function () {
+			var mainLoop = function () {				
 				thisGame.updateLocation(thisGame.location.x, thisGame.location.y);
 				thisStore.get("players", function (response) {
 					var players = response.val;
 					thisGame.cache.players = players;
 					if (players) {
-						for (var i = 0; i < players.length; i++) {
-							(function (i) {
-								thisStore.get(players[i], function (response) {
-									var location = response.val;
-									thisGame.cache[players[i]] = location;
-								});
-							})(i);
+						var counter = players.length;
+						var checkCounter = function () {
+							if (counter === 0) {
+								mainLoop();
+							}
+						};
+						if (counter === 1) {
+							setTimeout(mainLoop, 1000/FRAME_RATE);							
+						} else {
+							for (var i = 0; i < players.length; i++) {
+								(function (i) {
+									thisStore.get(players[i], function (response) {
+										var location = response.val;
+										thisGame.cache[players[i]] = location;
+										counter--;
+										checkCounter();
+									}, function (err) {
+										console.error(err);
+										counter--;
+										checkCounter();
+									}, 1000);
+								})(i);
+							}
 						}
+						
 						for (var key in thisGame.cache) {
 							if (players.indexOf(key) === -1) {
 								delete thisGame.cache[key];
@@ -77,7 +95,8 @@
 						}
 					}
 				});
-			}, 1000/30);	
+			}
+			mainLoop();
 		}
 		this.started = true;
 		this.startKeyboardListeners();

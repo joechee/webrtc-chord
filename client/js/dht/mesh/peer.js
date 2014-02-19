@@ -81,6 +81,9 @@
 			if (thisPeer.onclose) {
 				thisPeer.onclose();
 			}
+			setTimeout(function () {
+				thisPeer.parent.deregister(thisPeer);
+			}, 10000);
 		};
 
 		this.connection.oniceconnectionstatechange = function (event) {

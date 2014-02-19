@@ -124,7 +124,7 @@
 		}
 	};
 
-	DHT.prototype.get = function (key, callback) {
+	DHT.prototype.get = function (key, callback, timeout) {
 		var recipient = this.node.peerTable.queryClosestPredecessorId(hash(key));
 		if (recipient === this.node.id) {
 			callback({
@@ -143,7 +143,7 @@
 				if (callback) {
 					callback(response);
 				}
-			});	
+			}, timeout);	
 		}
 	};
 

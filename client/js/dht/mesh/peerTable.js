@@ -48,7 +48,9 @@
 
 	PeerTable.prototype.deregister = function (peer) {
 		peer.messageHandler = function () {};
-		delete this.peers[peer.id];
+		if (this.peers[peer.id]) {
+			delete this.peers[peer.id];
+		}
 	};
 
 	PeerTable.prototype.getPeers = function () {
