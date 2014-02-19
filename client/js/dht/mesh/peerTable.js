@@ -38,11 +38,12 @@
 		// Disconnect peer after 10 seconds
 		setTimeout(function () {
 			if (peer.status === "disconnected") {
+				console.error("Unable to connect to peer!");
 				peer.messageHandler = function (){};
 				peer.onclose = function (){};
 				self.deregister(peer);
 			}
-		}, 10000);
+		}, 30000);
 	};
 
 	PeerTable.prototype.deregister = function (peer) {
