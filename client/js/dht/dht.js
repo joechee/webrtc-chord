@@ -9,6 +9,12 @@
 	window.hash = hash;
 
 	var DHT = function (id) {
+		if (id) {
+			this.init(id);
+		}
+	};
+
+	DHT.prototype.init = function () {
 		this.node = new Node(id);
 		this.localStore = {};
 
@@ -77,7 +83,6 @@
 		this.node.ondisconnect = function () {
 			self.putMultiple(self.localStore);
 		};
-
 
 	};
 
