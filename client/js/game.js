@@ -1,7 +1,7 @@
 (function (window) {
 	var FRAME_RATE = 30;
 	var Game = function (dom) {
-		this.store = new DHT();
+		this.store = new DHT(true);
 		var thisStore = this.store;
 		var thisGame = this;
 
