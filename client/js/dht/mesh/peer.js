@@ -1,3 +1,10 @@
+/*
+Dependencies:
+
+EventEmitter
+
+*/
+
 (function (window) {
 	// Simulate delay in sending messages
 	var INT32_MAX = 2147483647;
@@ -32,6 +39,7 @@
 	};
 
 	var Peer = function (bootstrap, node, id) {
+		EventEmitter.call(this);
 		var thisPeer = this;
 		this.parent = node;
 
@@ -92,10 +100,8 @@
 				thisPeer.status = "connected";
 				thisPeer.clearBuffer();
 
-				if (thisPeer.onready) {
-					thisPeer.onready();
-					delete thisPeer['onready'];
-				}
+				thisPeer.emit('ready');
+				thisPeer.off('ready');
 			} else if (state === "disconnected" || state === "closed") {
 				thisPeer.status = "disconnected";
 				if (state === "disconnected") {
@@ -105,6 +111,8 @@
 		};
 
 	};
+
+	Peer.prototype = new EventEmitter();
 
 	Peer.prototype.disconnect = function () {
 		// Send close message before disconnect
@@ -276,11 +284,10 @@
 
 		dataChannel.onopen = function () {
 			thisPeer.clearBuffer();
+
+			thisPeer.emit('ready');
+			thisPeer.off('ready');
 			
-			if (thisPeer.onready) {
-				thisPeer.onready(thisPeer);
-				delete thisPeer.onready;
-			}
 		};
 	}
 

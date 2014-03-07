@@ -1,5 +1,9 @@
 
+/*
+Dependencies:
 
+eventEmitter.js
+*/
 
 (function (window) {
 
@@ -74,8 +78,10 @@
   TimeoutError.prototype = new Error();
 
   function Transport() {
+    EventEmitter.call(this);
   }
 
+  Transport.prototype = new EventEmitter();
   Transport.prototype.init = function (node) {
     this.parent = node;
     this.requestCallbacks = {};
@@ -219,6 +225,7 @@
   */
 
   function FingerTable(peerTable) {
+    Transport.call(this);
     this.init(peerTable);
   }
   FingerTable.prototype = new Transport();
@@ -678,14 +685,15 @@
   var hostname = location.origin.replace(/^http/, 'ws');
 
   function WebSocketTransport(node) {
+    Transport.call(this);
     Transport.prototype.init.apply(this, arguments);
     this.init(node);
   }
 
   WebSocketTransport.SocketConstants = {
-    CONNECTING: 0, 
-    OPEN: 1, 
-    CLOSING: 2, 
+    CONNECTING: 0,
+    OPEN: 1,
+    CLOSING: 2,
     CLOSED: 3
   };
 
@@ -709,9 +717,7 @@
     this.messageBuffer = [];
 
     this.webSocketConnection.onopen = function () {
-      if (self.onready) {
-        self.onready(self);
-      }
+      self.emit('ready');
       self._send({
         from: self.parent.id,
         recipient: "server",

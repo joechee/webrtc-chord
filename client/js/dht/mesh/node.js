@@ -126,9 +126,9 @@
 	Server.prototype.connectToPeer = function (peerID, callback) {
 		var peer = new Peer(this.transport, this.parent, peerID);
 		peer._initiateConnection();
-		peer.onready = function () {
+		peer.on('ready', function () {
 			callback(peer);
-		};
+		});
 	};
 
 	window.Node = Node;

@@ -1,4 +1,5 @@
 (function (window) {
+	// TODO: Should add support for once
 	function EventEmitter() {
 		this.eventHandlers = {};
 	}
@@ -17,6 +18,11 @@
 				handler(data);
 			});
 		}
+	};
+
+	// Remove all handlers from an event
+	EventEmitter.prototype.off = function (event) {
+		this.eventHandlers[event] = [];
 	};
 
 	window.EventEmitter = EventEmitter;
