@@ -65,27 +65,30 @@
 	});
 
 	var $acquire = document.querySelector('#acquire-toggle');
+	var lock = dht.getLockObject('lock');
 
-	dht.on('ready', function () {
-		dht.get('lock', function (res) {
-			var val = res.val;
-			if (val) {
-				$acquire.disabled = true;
-			}
-		});
-	});
+	lock.on('statusChange', function (status) {
+		if (status === "taken") {
+			$acquire.disabled = true;
+			$acquire.innerHTML = 'Acquire';
+		} else if (status === "acquired") {
+			$acquire.disabled = false;
+			$acquire.innerHTML = 'Release';
+		} else if (status === "free") {
+			$acquire.disabled = false;
+			$acquire.innerHTML = 'Acquire';
+		}
+	})
+
 
 	$acquire.addEventListener('click', function () {
-		console.log($acquire.innerHTML);
-		$acquire.innerHTML = "release";
-
-		/*
-		dht.acquireLock('lock', function (val) {
-			if (val) {
-				$acquire.value = "Release";
-			}
-		});
-		*/ 
+		if (lock.status === "free") {
+			lock.acquire();
+		} else if (lock.status === "taken") {
+			throw new Error("This lock is taken!");
+		} else if (lock.status === "acquired") {
+			lock.release();
+		}
 	});
 
 
