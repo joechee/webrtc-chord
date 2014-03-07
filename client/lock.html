@@ -1,0 +1,95 @@
+<html>
+<head>
+	<title>DHT Test</title>
+</head>
+<body>
+	<!--
+	Libraries for DHT
+	!-->
+	<style>
+	</style>
+
+	<div>
+		<h1>DHT Demo (With Locks!)</h1>
+		<div id="put-area">
+			<h2>Put</h2>
+			<br />Key: <input type="text" id="putkey"></input>
+			<br />Value: <input type="text" id = "putval"></input>
+			<button id="put">Put</button>
+		</div>
+		<div id="get-area">
+			<h2>Get</h2>
+			<br />Key: <input type="text" id="getkey"></input>
+			<br />Value: <input type="text" id="getval" disabled></input>
+			<button id="get">Get</button>
+		</div>
+
+		<div id="acquire-lock-area">
+			<h2>Acquire Lock</h2>
+			<button id="acquire-toggle">Acquire</button>
+		</div>
+	</div>
+
+ 	<script src="/js/random.js"></script>
+	<script src="/js/dht/crypto/core.js"></script>
+	<script src="/js/dht/crypto/sha1.js"></script>
+	<script src="/js/dht/eventEmitter.js"></script>
+	<script src="/js/dht/mesh/network.js"></script>
+	<script src="/js/dht/mesh/mesh.js"></script>
+	<script src="/js/dht/mesh/peer.js"></script>
+	<script src="/js/dht/mesh/peerTable.js"></script>
+	<script src="/js/dht/mesh/peerGenerator.js"></script>
+	<script src="/js/dht/mesh/node.js"></script>
+	<script src="/js/dht/dht.js"></script>
+	<script src="/js/dht/dhtLock.js"></script>
+	
+	<!--
+	End Libraries for DHT
+	!-->
+
+	<script>
+	var dht = new DHTWithLocks(true);
+	var $put = document.querySelector('#put');
+	var $get = document.querySelector('#get');
+	var $putKey = document.querySelector('#putkey');
+	var $putVal = document.querySelector('#putval');
+	var $getKey = document.querySelector('#getkey');
+	var $getVal = document.querySelector('#getval');
+	$put.addEventListener('click', function () {
+		dht.put($putKey.value, $putVal.value, function () {});
+	});
+	$get.addEventListener('click', function () {
+		dht.get($getKey.value, function (response) {
+			$getVal.value = response.val;
+		});
+	});
+
+	var $acquire = document.querySelector('#acquire-toggle');
+
+	dht.on('ready', function () {
+		dht.get('lock', function (res) {
+			var val = res.val;
+			if (val) {
+				$acquire.disabled = true;
+			}
+		});
+	});
+
+	$acquire.addEventListener('click', function () {
+		console.log($acquire.innerHTML);
+		$acquire.innerHTML = "release";
+
+		/*
+		dht.acquireLock('lock', function (val) {
+			if (val) {
+				$acquire.value = "Release";
+			}
+		});
+		*/ 
+	});
+
+
+
+	</script>
+</body>
+</html>

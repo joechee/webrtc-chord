@@ -9,12 +9,15 @@
 	window.hash = hash;
 
 	var DHT = function (id) {
+		EventEmitter.call(this);
     if (id === true) {
       this.init(Math.floor(Math.random() * INT32_MAX));
 		} else if (id) {
 			this.init(id);
 		}
 	};
+
+	DHT.prototype = new EventEmitter();
 
 	DHT.prototype.init = function (id) {
 		this.node = new Node(id);
@@ -51,9 +54,7 @@
 				});
 				self.takeOverBuffer = [];
 
-				if (self.onready){
-					self.onready();
-				}
+				self.emit('ready');
 			});
 		};
 		this.node.fingerTable.registerRequestType('put', function (request) {
