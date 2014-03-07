@@ -28,7 +28,7 @@ function (window) {
 
 		this.cache = {};
 
-		this.store.onready = function () {
+		this.store.on('ready', function () {
 			var player_id = thisGame.player_id = Math.floor(Math.random() * 1000000);
 			var player_name = "player-" + player_id;
 			thisGame.location = {
@@ -49,7 +49,7 @@ function (window) {
 
 			thisGame.localState = {};
 			thisGame.startMainLoop();
-		};
+		});
 
 	};
 
