@@ -70,7 +70,7 @@
 							}
 						};
 						if (counter === 1) {
-							setTimeout(mainLoop, 1000/FRAME_RATE);							
+							setTimeout(mainLoop, 1000/FRAME_RATE);
 						} else {
 							for (var i = 0; i < players.length; i++) {
 								(function (i) {
@@ -87,7 +87,7 @@
 								})(i);
 							}
 						}
-						
+
 						for (var key in thisGame.cache) {
 							if (players.indexOf(key) === -1) {
 								delete thisGame.cache[key];
@@ -95,7 +95,7 @@
 						}
 					}
 				});
-			}
+			};
 			mainLoop();
 		}
 		this.started = true;
@@ -159,7 +159,7 @@
 					console.log(e.keyCode);
 					break;
 			}
-		})
+		});
 	};
 
 	Game.prototype.getPlayers = function (callback) {
@@ -172,7 +172,7 @@
 		this.bullet = {
 			x: this.location.x,
 			y: this.location.y
-		}
+		};
 	};
 
 	window.Game = Game;
