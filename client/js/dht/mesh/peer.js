@@ -72,6 +72,7 @@ EventEmitter
 			setupDataChannel(thisPeer, dataChannel);
 			if (thisPeer.connection.iceConnectionState === "connected") {
 				thisPeer.clearBuffer();
+				thisPeer.status = "connected";
 			}
 		};
 
@@ -283,6 +284,7 @@ EventEmitter
 		};
 
 		dataChannel.onopen = function () {
+			thisPeer.status = "connected";
 			thisPeer.clearBuffer();
 
 			thisPeer.emit('ready');

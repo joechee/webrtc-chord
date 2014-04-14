@@ -489,7 +489,7 @@ eventEmitter.js
         } else if (requests === 0) {
           callback(true);
         }
-      }
+      };
       self.set(0, response.successor, target);
       for (var i = 1; i < BIT_SIZE ; i++) {
         if (self.fingerInterval(i).start >= self.parent.id 
