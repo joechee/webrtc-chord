@@ -578,7 +578,7 @@ eventEmitter.js
             predecessor: self.parent.id,
             successor: successor
           });
-        }, 0);  
+        }, 0);
       } else {
         setTimeout(function () {
           self._findPredecessor(id, callback, times + 1);

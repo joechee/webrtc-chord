@@ -57,6 +57,16 @@
 		return this.peers;
 	};
 
+	PeerTable.prototype.getLength = function () {
+		var length = 0;
+		for (var i in this.peers) {
+			if (this.peers.hasOwnProperty(i) && this.peers[i].status === "connected") {
+				length++;
+			}
+		}
+		return length;
+	}
+
 	PeerTable.prototype.queryClosestSuccessorId = function (id) {
 		var closestSuccessor = this.id !== id ? this.id : id - 1;
 		for (var peer in this.peers) {

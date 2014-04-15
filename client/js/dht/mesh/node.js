@@ -23,6 +23,29 @@
 			request.respond('pong');
 		});
 
+		this.snapshotCallback = false;
+
+		this.fingerTable.registerMessageType('snapshot', function (msg) {
+			if (msg.originator === self.id && self.snapshotCallback) {
+				self.snapshotCallback(msg.peers);
+				self.snapshotCallback = undefined;
+			} else if (msg.originator === self.id) {
+				// Do nothing
+			} else {
+				if (msg.peers.indexOf(self.id) !== -1) {
+					return;
+				}
+				msg.peers.push(self.id);
+				self.fingerTable.send({
+					originator: msg.originator,
+					from: self.id,
+					recipient: self.getSuccessor(),
+					type: 'snapshot',
+					peers: msg.peers
+				});
+			}
+		});
+
 		this.server.getRandomPeer(function (peer) {
 			if (!peer) {
 				self.status = "connected";
@@ -102,6 +125,41 @@
 		}, function () {
 			console.log("ping to " + id +": " + (new Date() - now) + " ms");
 		});
+	};
+
+	Node.prototype.getSuccessor = function () {
+		return this.peerTable.queryClosestSuccessorId(this.id + 1);
+	};
+
+	Node.prototype.snapshot = function (callback) {
+		if (this.fingerTable.peerTable.getLength() > 0) {
+			this.fingerTable.send({
+				originator: this.id,
+				from: this.id,
+				recipient: this.getSuccessor(),
+				peers: [this.id],
+				type: 'snapshot'
+			});
+			this.snapshotCallback = callback;
+		} else {
+			callback([this.id]);
+		}
+	};
+
+	Node.prototype.send = function (msg) {
+		this.fingerTable.send(msg);
+	};
+
+	Node.prototype.request = function (msg, callback) {
+		this.fingerTable.request(msg, callback);
+	};
+
+	Node.prototype.registerRequestType = function (type, callback) {
+		this.fingerTable.registerRequestType(type, callback);
+	};
+
+	Node.prototype.registerMessageType = function (type, callback) {
+		this.fingerTable.registerMessageType(type, callback);
 	};
 
 	function Server(parent, transport) {

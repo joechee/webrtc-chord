@@ -70,10 +70,6 @@ EventEmitter
 			var dataChannel = event.channel;
 			thisPeer.dataChannel = dataChannel;
 			setupDataChannel(thisPeer, dataChannel);
-			if (thisPeer.connection.iceConnectionState === "connected") {
-				thisPeer.clearBuffer();
-				thisPeer.status = "connected";
-			}
 		};
 
 		// Cleanup connections
@@ -97,13 +93,7 @@ EventEmitter
 
 		this.connection.oniceconnectionstatechange = function (event) {
 			var state = event.target.iceConnectionState;
-			if (state === "connected") {
-				thisPeer.status = "connected";
-				thisPeer.clearBuffer();
-
-				thisPeer.emit('ready');
-				thisPeer.off('ready');
-			} else if (state === "disconnected" || state === "closed") {
+			if (state === "disconnected" || state === "closed") {
 				thisPeer.status = "disconnected";
 				if (state === "disconnected") {
 					thisPeer.parent.deregister(thisPeer);
@@ -291,6 +281,10 @@ EventEmitter
 			thisPeer.off('ready');
 			
 		};
+
+		if (dataChannel.readyState == "open") {
+			dataChannel.onopen();
+		}
 	}
 
 	window.Peer = Peer;
