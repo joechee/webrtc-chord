@@ -1,0 +1,158 @@
+<html>
+<head>
+  <title>DHT Test</title>
+</head>
+<body>
+  <!--
+  Libraries for DHT
+  !-->
+  <style>
+
+  /* Taken from http://designshack.net/articles/css/5-simple-and-practical-css-list-styles-you-can-copy-and-paste/ */
+  h1 {
+    font: 400 40px/1.5 Helvetica, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+  }
+
+  ul {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  li {
+    font: 200 20px/1.5 Helvetica, Verdana, sans-serif;
+    border-bottom: 1px solid #ccc;
+  }
+
+  li:last-child {
+    border: none;
+  }
+
+  li a {
+    text-decoration: none;
+    color: #000;
+    display: block;
+    width: 200px;
+
+    -webkit-transition: font-size 0.3s ease, background-color 0.3s ease;
+    -moz-transition: font-size 0.3s ease, background-color 0.3s ease;
+    -o-transition: font-size 0.3s ease, background-color 0.3s ease;
+    -ms-transition: font-size 0.3s ease, background-color 0.3s ease;
+    transition: font-size 0.3s ease, background-color 0.3s ease;
+  }
+
+
+  input {
+      background: white;
+      border: 1px solid #DDD;
+      border-radius: 5px;
+      box-shadow: 0 0 5px #DDD inset;
+      color: #666;
+      float: left;
+      padding: 10px 10px;
+      width: 165px;
+      outline: none;
+  }
+
+  button {
+    float:left;
+    background: #3498db;
+    background-image: -webkit-linear-gradient(top, #3498db, #2980b9);
+    background-image: -moz-linear-gradient(top, #3498db, #2980b9);
+    background-image: -ms-linear-gradient(top, #3498db, #2980b9);
+    background-image: -o-linear-gradient(top, #3498db, #2980b9);
+    background-image: linear-gradient(to bottom, #3498db, #2980b9);
+    -webkit-border-radius: 4;
+    -moz-border-radius: 4;
+    border-radius: 4px;
+    font-family: Arial;
+    color: #ffffff;
+    font-size: 20px;
+    padding: 4px 20px 3px 20px;
+    text-decoration: none;
+  }
+
+  button:hover {
+    background: #3cb0fd;
+    background-image: -webkit-linear-gradient(top, #3cb0fd, #3498db);
+    background-image: -moz-linear-gradient(top, #3cb0fd, #3498db);
+    background-image: -ms-linear-gradient(top, #3cb0fd, #3498db);
+    background-image: -o-linear-gradient(top, #3cb0fd, #3498db);
+    background-image: linear-gradient(to bottom, #3cb0fd, #3498db);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  </style>
+
+  <div>
+    <h1>Status Demo</h1>
+    <div>
+      <input id="name" placeholder="undefined">
+      <button id="set">Set name</button>
+    </div>
+    <div style="clear:both; width:200px">
+      <ul id="online">
+      </ul>
+    </div>
+    
+
+
+  </div>
+
+  <script src="/js/random.js"></script>
+  <script src="/js/dht/crypto/core.js"></script>
+  <script src="/js/dht/crypto/sha1.js"></script>
+  <script src="/js/dht/eventEmitter.js"></script>
+  <script src="/js/dht/mesh/network.js"></script>
+  <script src="/js/dht/mesh/mesh.js"></script>
+  <script src="/js/dht/mesh/peer.js"></script>
+  <script src="/js/dht/mesh/peerTable.js"></script>
+  <script src="/js/dht/mesh/peerGenerator.js"></script>
+  <script src="/js/dht/mesh/node.js"></script>
+  <script src="/js/dht/dht.js"></script>
+  
+  <!--
+  End Libraries for DHT
+  !-->
+
+  <script>
+  var dht = new DHT(true);
+  var $set = document.querySelector('#set');
+  var $name = document.querySelector('#name');
+  var $online = document.querySelector('#online');
+
+  var Online = function ($online) { this.$online = $online;};
+  Online.prototype.set = function (onlineList) {
+    this.$online.innerHTML = "";
+    for (var i = 0; i < onlineList.length; i++) {
+      var $node = document.createElement('li');
+      $node.appendChild(document.createTextNode(onlineList[i]));
+      this.$online.appendChild($node);
+    }
+  };
+
+  var nodesOnline = new Online($online);
+
+  setInterval(function () {
+    dht.node.snapshot(function (nodes) {
+      var nodenames = [];
+      nodes.forEach(function (id) {
+        dht.get(id.toString(), function (msg) {
+          nodenames.push(msg.val);
+          if (nodenames.length === nodes.length) {
+            nodesOnline.set(nodenames);
+          }
+        });
+      });
+    }); 
+  }, 2000);
+  
+
+  $set.addEventListener('click', function () {
+    dht.put(dht.node.id.toString(), $name.value, function () {});
+  });
+  </script>
+</body>
+</html>
